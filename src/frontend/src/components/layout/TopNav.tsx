@@ -337,16 +337,16 @@ export function TopNav() {
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
 
   const handleSignOut = () => {
-    // Clear all cached queries so stale data doesn't bleed into the next session
+    // Clear all react-query cache so stale data doesn't bleed into next session
     queryClient.clear();
-    // Call clear() then do a hard reload — this fully resets the AuthClient and
-    // all in-memory state, which is the only reliable way to allow re-login
-    // after logout with Internet Identity.
+    // Call clear() to trigger authClient.logout() (clears IndexedDB delegation).
+    // Immediately hard-navigate to /login — a full page reload re-creates all
+    // React state and the AuthClient from scratch, avoiding the race condition
+    // where clear() sets authClient→undefined, re-triggers the init useEffect,
+    // briefly sets loginStatus back to "initializing", and leaves the Sign In
+    // button disabled on the re-rendered login page.
     clear();
-    // Small delay so clear()'s logout() promise can start before we reload
-    setTimeout(() => {
-      window.location.href = "/login";
-    }, 300);
+    window.location.href = "/login";
   };
 
   const { data: unreadCount = 0 } = useQuery<number>({

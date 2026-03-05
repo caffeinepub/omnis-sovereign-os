@@ -53,6 +53,16 @@ function AuthenticatedLayout() {
   const { showWarning, showExpired, handleStayLoggedIn, handleExpiredSignIn } =
     useSessionGuard();
 
+  // Hard-reload logout: call authClient.logout() then immediately navigate to
+  // /login via window.location so the entire React tree (including the
+  // AuthClient instance) is rebuilt from scratch. This prevents the race where
+  // clear() sets authClient→undefined, the init useEffect re-runs, briefly
+  // sets loginStatus to "initializing", and leaves the Sign In button disabled.
+  const handleLogOut = () => {
+    clear();
+    window.location.href = "/login";
+  };
+
   useEffect(() => {
     // Redirect to login if: not initializing AND no identity present
     // This covers both the normal logout case and the post-clear idle state
@@ -86,7 +96,7 @@ function AuthenticatedLayout() {
       <SessionWarningDialog
         open={showWarning}
         onStayLoggedIn={handleStayLoggedIn}
-        onLogOut={clear}
+        onLogOut={handleLogOut}
       />
       {showExpired && <SessionExpiredModal onSignIn={handleExpiredSignIn} />}
     </PermissionsProvider>

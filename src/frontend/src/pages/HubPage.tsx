@@ -1,5 +1,7 @@
 import { UserRole } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
@@ -8,6 +10,7 @@ import {
   ChevronRight,
   FolderOpen,
   HardDrive,
+  Key,
   Loader2,
   Mail,
   MessageSquare,
@@ -122,6 +125,10 @@ export default function HubPage() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const [isCallerAdminFlag, setIsCallerAdminFlag] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
+  // Bootstrap code claim
+  const [showClaimPanel, setShowClaimPanel] = useState(false);
+  const [claimCode, setClaimCode] = useState("");
+  const [isClaiming, setIsClaiming] = useState(false);
 
   // Check if the caller has the admin role but hasn't been flagged as S2 admin yet
   useEffect(() => {
@@ -137,9 +144,7 @@ export default function HubPage() {
     setIsActivating(true);
     try {
       const principal = identity.getPrincipal();
-      // Ensure admin role is set
       await actor.assignCallerUserRole(principal, UserRole.admin);
-      // Update profile to mark as S2 admin
       await actor.updateUserProfile({
         principalId: principal,
         name: profile?.name ?? "",
@@ -152,7 +157,6 @@ export default function HubPage() {
         registered: true,
         avatarUrl: profile?.avatarUrl,
       });
-      // Mark as validated
       await actor.validateS2Admin(principal);
       await refreshProfile();
       toast.success("S2 admin activated", {
@@ -167,8 +171,54 @@ export default function HubPage() {
     }
   };
 
+  // Post-registration S2 admin claim using bootstrap code
+  const handleClaimS2Admin = async () => {
+    if (!actor || !identity || !claimCode.trim()) return;
+    setIsClaiming(true);
+    try {
+      const principal = identity.getPrincipal();
+      // The bootstrap code is passed as the caffeineAdminToken.
+      // We re-initialize the actor with the provided code as the admin token
+      // by calling _initializeAccessControlWithSecret directly.
+      await (
+        actor as unknown as {
+          _initializeAccessControlWithSecret: (token: string) => Promise<void>;
+        }
+      )._initializeAccessControlWithSecret(claimCode.trim());
+      await actor.assignCallerUserRole(principal, UserRole.admin);
+      await actor.updateUserProfile({
+        principalId: principal,
+        name: profile?.name ?? "",
+        rank: profile?.rank ?? "",
+        email: profile?.email ?? "",
+        orgRole: profile?.orgRole ?? "",
+        clearanceLevel: 4n,
+        isS2Admin: true,
+        isValidatedByCommander: false,
+        registered: true,
+        avatarUrl: profile?.avatarUrl,
+      });
+      await actor.validateS2Admin(principal);
+      await refreshProfile();
+      setShowClaimPanel(false);
+      setClaimCode("");
+      toast.success("S2 Admin access granted", {
+        description: "You now have full S2 admin access.",
+      });
+    } catch {
+      toast.error("Invalid bootstrap code", {
+        description: "The code was not accepted. Check and try again.",
+      });
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
   const showWelcomeBanner =
-    clearanceLevel === 0 && !welcomeDismissed && !isCallerAdminFlag;
+    clearanceLevel === 0 &&
+    !welcomeDismissed &&
+    !isCallerAdminFlag &&
+    !isS2Admin;
   const showS2Checklist = isS2Admin && !profile?.isValidatedByCommander;
   const showRecoveryPanel = isCallerAdminFlag && !isS2Admin;
 
@@ -233,6 +283,78 @@ export default function HubPage() {
                     </>
                   )}
                 </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* S2 Admin Bootstrap Claim Panel — for users who skipped the code at registration */}
+          <AnimatePresence>
+            {showClaimPanel && !isS2Admin && (
+              <motion.div
+                data-ocid="hub.s2_claim.panel"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="mb-5 rounded border px-5 py-4"
+                style={{
+                  backgroundColor: "rgba(245, 158, 11, 0.06)",
+                  borderColor: "#f59e0b",
+                }}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-amber-400">
+                    Claim S2 Admin Access
+                  </p>
+                  <button
+                    type="button"
+                    data-ocid="hub.s2_claim.close_button"
+                    onClick={() => {
+                      setShowClaimPanel(false);
+                      setClaimCode("");
+                    }}
+                    className="text-slate-500 transition-colors hover:text-slate-300"
+                    aria-label="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mb-3 font-mono text-xs leading-relaxed text-slate-400">
+                  Enter the admin bootstrap code to claim S2 admin privileges
+                  for this account.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    data-ocid="hub.s2_claim.input"
+                    type="text"
+                    value={claimCode}
+                    onChange={(e) => setClaimCode(e.target.value)}
+                    placeholder="Bootstrap code"
+                    className="flex-1 border font-mono text-xs text-white"
+                    style={{
+                      backgroundColor: "#0a0e1a",
+                      borderColor: "#2a3347",
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleClaimS2Admin();
+                    }}
+                    disabled={isClaiming}
+                  />
+                  <Button
+                    type="button"
+                    data-ocid="hub.s2_claim.submit_button"
+                    onClick={() => void handleClaimS2Admin()}
+                    disabled={isClaiming || !claimCode.trim()}
+                    className="shrink-0 font-mono text-xs uppercase tracking-wider"
+                    style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+                  >
+                    {isClaiming ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Claim"
+                    )}
+                  </Button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -314,13 +436,28 @@ export default function HubPage() {
           )}
 
           {/* Section heading */}
-          <div className="mb-6">
-            <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
-              Command Center
-            </h1>
-            <p className="mt-1 font-mono text-xs text-slate-500 uppercase tracking-widest">
-              Select a module to begin
-            </p>
+          <div className="mb-6 flex items-end justify-between">
+            <div>
+              <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
+                Command Center
+              </h1>
+              <p className="mt-1 font-mono text-xs text-slate-500 uppercase tracking-widest">
+                Select a module to begin
+              </p>
+            </div>
+            {/* S2 Admin claim trigger — only shown to non-S2 users who haven't opened the panel */}
+            {!isS2Admin && !showClaimPanel && (
+              <button
+                type="button"
+                data-ocid="hub.s2_claim.open_modal_button"
+                onClick={() => setShowClaimPanel(true)}
+                className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-600 transition-colors hover:text-amber-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                title="Claim S2 admin access with bootstrap code"
+              >
+                <Key className="h-3 w-3" />
+                Admin Access
+              </button>
+            )}
           </div>
 
           {/* Tiles grid */}
