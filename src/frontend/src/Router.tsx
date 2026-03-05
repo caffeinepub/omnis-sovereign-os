@@ -24,12 +24,12 @@ const ValidateCommanderPage = lazy(
   () => import("@/pages/ValidateCommanderPage"),
 );
 const HubPage = lazy(() => import("@/pages/HubPage"));
-const StubPage = lazy(() => import("@/pages/StubPage"));
 const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
 const MessagesPage = lazy(() => import("@/pages/MessagesPage"));
 const PersonnelPage = lazy(() => import("@/pages/PersonnelPage"));
 const EmailDirectoryPage = lazy(() => import("@/pages/EmailDirectoryPage"));
 const FileStoragePage = lazy(() => import("@/pages/FileStoragePage"));
+const AccessMonitoringPage = lazy(() => import("@/pages/AccessMonitoringPage"));
 
 // --- Page loader ---
 function PageLoader() {
@@ -105,7 +105,11 @@ function MonitoringPage() {
   }, [isS2Admin, isLoading, router]);
 
   if (isLoading || !isS2Admin) return <PageLoader />;
-  return <StubPage title="Access Monitoring" />;
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <AccessMonitoringPage />
+    </Suspense>
+  );
 }
 
 // --- Route definitions ---
