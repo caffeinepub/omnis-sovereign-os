@@ -11,9 +11,8 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
 import { cn } from "@/lib/utils";
-import { Link } from "@tanstack/react-router";
+
 import {
-  ChevronRight,
   Download,
   File,
   FileAudio,
@@ -764,17 +763,18 @@ export default function FileStoragePage() {
           className="flex shrink-0 items-center justify-between border-b px-6 py-4"
           style={{ borderColor: "#1a2235" }}
         >
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider">
-            <Link
-              to="/"
-              className="text-amber-500 transition-colors hover:text-amber-400"
-            >
-              Hub
-            </Link>
-            <ChevronRight className="h-3 w-3 text-slate-600" />
-            <span className="text-white">File Storage</span>
-          </nav>
+          {/* Title area */}
+          <div className="flex items-center gap-3">
+            <HardDrive className="h-5 w-5 text-amber-500" />
+            <div>
+              <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
+                File Storage
+              </h1>
+              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-600">
+                Secure file vault
+              </p>
+            </div>
+          </div>
 
           {/* Status indicators */}
           <div className="flex items-center gap-4">

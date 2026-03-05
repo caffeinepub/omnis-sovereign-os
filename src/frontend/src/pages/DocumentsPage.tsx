@@ -779,6 +779,22 @@ export default function DocumentsPage() {
         />
       )}
 
+      {/* Page header strip */}
+      <div
+        className="flex shrink-0 items-center gap-3 border-b px-5 py-3"
+        style={{ borderColor: "#1a2235" }}
+      >
+        <Shield className="h-4 w-4 text-amber-500" />
+        <div>
+          <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white leading-none">
+            Documents
+          </h1>
+          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-600">
+            Classified document management
+          </p>
+        </div>
+      </div>
+
       {/* Body — sidebar + main */}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left Sidebar ──────────────────────────────────────────────────── */}

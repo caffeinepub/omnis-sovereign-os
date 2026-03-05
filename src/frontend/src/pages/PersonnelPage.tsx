@@ -458,15 +458,18 @@ export default function PersonnelPage() {
         <div className="mx-auto max-w-7xl">
           {/* Header row */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
-                Personnel Directory
-              </h1>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-slate-600">
-                {isLoading
-                  ? "Loading..."
-                  : `${filteredProfiles.length} of ${profiles.length} personnel`}
-              </p>
+            <div className="flex items-center gap-3">
+              <Users className="h-5 w-5 text-amber-500" />
+              <div>
+                <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
+                  Personnel Directory
+                </h1>
+                <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-600">
+                  {isLoading
+                    ? "Loading..."
+                    : `${filteredProfiles.length} of ${profiles.length} personnel`}
+                </p>
+              </div>
             </div>
 
             {/* Controls */}

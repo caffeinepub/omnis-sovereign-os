@@ -1,19 +1,25 @@
+import { UserRole } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useActor } from "@/hooks/useActor";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   FolderOpen,
   HardDrive,
+  Loader2,
   Mail,
   MessageSquare,
   Shield,
+  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, type Variants, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface TileDefinition {
   icon: LucideIcon;
@@ -108,13 +114,63 @@ const tileVariants: Variants = {
 };
 
 export default function HubPage() {
-  const { clearanceLevel, isS2Admin, isValidatedByCommander } =
+  const { clearanceLevel, isS2Admin, profile, refreshProfile } =
     usePermissions();
+  const { actor } = useActor();
+  const { identity } = useInternetIdentity();
   const navigate = useNavigate();
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const [isCallerAdminFlag, setIsCallerAdminFlag] = useState(false);
+  const [isActivating, setIsActivating] = useState(false);
 
-  const showWelcomeBanner = clearanceLevel === 0 && !welcomeDismissed;
-  const showS2Checklist = isS2Admin && !isValidatedByCommander;
+  // Check if the caller has the admin role but hasn't been flagged as S2 admin yet
+  useEffect(() => {
+    if (!actor || !profile || isS2Admin) return;
+    actor
+      .isCallerAdmin()
+      .then((result) => setIsCallerAdminFlag(result))
+      .catch(() => setIsCallerAdminFlag(false));
+  }, [actor, profile, isS2Admin]);
+
+  const handleActivateS2Admin = async () => {
+    if (!actor || !identity) return;
+    setIsActivating(true);
+    try {
+      const principal = identity.getPrincipal();
+      // Ensure admin role is set
+      await actor.assignCallerUserRole(principal, UserRole.admin);
+      // Update profile to mark as S2 admin
+      await actor.updateUserProfile({
+        principalId: principal,
+        name: profile?.name ?? "",
+        rank: profile?.rank ?? "",
+        email: profile?.email ?? "",
+        orgRole: profile?.orgRole ?? "",
+        clearanceLevel: profile?.clearanceLevel ?? 4n,
+        isS2Admin: true,
+        isValidatedByCommander: false,
+        registered: true,
+        avatarUrl: profile?.avatarUrl,
+      });
+      // Mark as validated
+      await actor.validateS2Admin(principal);
+      await refreshProfile();
+      toast.success("S2 admin activated", {
+        description: "You now have full S2 admin access.",
+      });
+    } catch {
+      toast.error("Activation failed", {
+        description: "Could not activate S2 admin role. Try again.",
+      });
+    } finally {
+      setIsActivating(false);
+    }
+  };
+
+  const showWelcomeBanner =
+    clearanceLevel === 0 && !welcomeDismissed && !isCallerAdminFlag;
+  const showS2Checklist = isS2Admin && !profile?.isValidatedByCommander;
+  const showRecoveryPanel = isCallerAdminFlag && !isS2Admin;
 
   const visibleTiles = TILES.filter((t) => !t.s2Only || isS2Admin);
 
@@ -128,6 +184,59 @@ export default function HubPage() {
 
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">
+          {/* S2 Admin Recovery Panel */}
+          <AnimatePresence>
+            {showRecoveryPanel && (
+              <motion.div
+                data-ocid="hub.s2_recovery.panel"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="mb-5 flex flex-col gap-3 rounded border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                style={{
+                  backgroundColor: "rgba(245, 158, 11, 0.06)",
+                  borderColor: "#f59e0b",
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <ShieldCheck
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    style={{ color: "#f59e0b" }}
+                  />
+                  <div>
+                    <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-amber-400">
+                      S2 Admin Role Available
+                    </p>
+                    <p className="mt-0.5 font-mono text-xs leading-relaxed text-slate-400">
+                      Your account has system admin authorization but S2 admin
+                      is not yet activated.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-ocid="hub.s2_activate.button"
+                  onClick={() => void handleActivateS2Admin()}
+                  disabled={isActivating}
+                  className="flex shrink-0 items-center gap-2 rounded border border-amber-500 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-widest text-amber-400 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+                >
+                  {isActivating ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Activating…
+                    </>
+                  ) : (
+                    <>
+                      Activate S2 Admin
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Welcome banner for clearance level 0 */}
           <AnimatePresence>
             {showWelcomeBanner && (

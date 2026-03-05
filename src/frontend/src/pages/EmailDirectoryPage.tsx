@@ -72,15 +72,18 @@ export default function EmailDirectoryPage() {
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
           {/* Header */}
-          <div className="mb-6">
-            <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
-              Email Directory
-            </h1>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-slate-600">
-              {isLoading
-                ? "Loading..."
-                : `${filteredProfiles.length} of ${profiles.length} contacts`}
-            </p>
+          <div className="mb-6 flex items-center gap-3">
+            <Mail className="h-5 w-5 text-amber-500" />
+            <div>
+              <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
+                Email Directory
+              </h1>
+              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-600">
+                {isLoading
+                  ? "Loading..."
+                  : `${filteredProfiles.length} of ${profiles.length} contacts`}
+              </p>
+            </div>
           </div>
 
           {/* Search */}

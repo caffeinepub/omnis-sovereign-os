@@ -762,6 +762,22 @@ export default function MessagesPage() {
         />
       )}
 
+      {/* Page header strip */}
+      <div
+        className="flex shrink-0 items-center gap-3 border-b px-5 py-3"
+        style={{ borderColor: "#1a2235" }}
+      >
+        <MessageSquare className="h-4 w-4 text-amber-500" />
+        <div>
+          <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white leading-none">
+            Messaging
+          </h1>
+          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-600">
+            Secure internal communications
+          </p>
+        </div>
+      </div>
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left Panel ──────────────────────────────────────────────────── */}

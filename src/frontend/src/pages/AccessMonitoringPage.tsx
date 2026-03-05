@@ -32,37 +32,51 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AI_SCAN_MESSAGES,
+  DEMO_ANOMALY_EVENTS,
+  DEMO_FOLDERS,
+  DEMO_PROFILES,
+  DEMO_THREAT_SCORES,
+  type ThreatScore,
+} from "@/config/aiDemoData";
 import { SEVERITY_COLORS } from "@/config/constants";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   AlertTriangle,
+  Bot,
+  CheckCircle2,
   ClipboardList,
   FileText,
   FolderOpen,
   Layers,
   Loader2,
   MessageSquare,
+  Radio,
   Shield,
   ShieldAlert,
+  ShieldOff,
+  SkipForward,
   Users,
+  XCircle,
+  Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatTimestamp(ts: bigint): string {
-  const ms = Number(ts);
-  const date = ms > 1e15 ? new Date(ms / 1_000_000) : new Date(ms);
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function timeAgo(ts: bigint): string {
+  const diffMs = Date.now() - Number(ts);
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 function truncatePrincipal(p: { toString(): string }): string {
@@ -74,7 +88,10 @@ function truncatePrincipal(p: { toString(): string }): string {
 function getProfileName(
   profiles: ExtendedProfile[],
   principal: { toString(): string } | undefined,
+  demoMode: boolean,
+  demoName?: string,
 ): string {
+  if (demoMode && demoName) return demoName;
   if (!principal) return "—";
   const match = profiles.find(
     (p) => p.principalId.toString() === principal.toString(),
@@ -87,8 +104,13 @@ function getProfileName(
 function getFolderName(
   folders: Folder[],
   folderId: string | undefined,
+  demoMode: boolean,
 ): string {
   if (!folderId) return "—";
+  if (demoMode) {
+    const demo = DEMO_FOLDERS.find((f) => f.id === folderId);
+    if (demo) return demo.name;
+  }
   return folders.find((f) => f.id === folderId)?.name ?? folderId;
 }
 
@@ -142,14 +164,15 @@ function SeverityBadge({ severity }: { severity: string }) {
 function SourceBadge({ isSystemGenerated }: { isSystemGenerated: boolean }) {
   return isSystemGenerated ? (
     <span
-      className="inline-flex items-center rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest"
+      className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest"
       style={{
         backgroundColor: "rgba(245,158,11,0.1)",
         color: "#f59e0b",
         border: "1px solid rgba(245,158,11,0.3)",
       }}
     >
-      System
+      <Bot className="h-2.5 w-2.5" />
+      AI System
     </span>
   ) : (
     <span
@@ -172,20 +195,28 @@ interface StatCardProps {
   value: string;
   label: string;
   isLoading: boolean;
+  highlight?: boolean;
 }
 
-function StatCard({ icon, value, label, isLoading }: StatCardProps) {
+function StatCard({ icon, value, label, isLoading, highlight }: StatCardProps) {
   return (
     <div
       className="flex flex-col gap-3 rounded border p-4 transition-colors"
-      style={{ backgroundColor: "#1a2235", borderColor: "#243048" }}
+      style={{
+        backgroundColor: highlight ? "rgba(239,68,68,0.08)" : "#1a2235",
+        borderColor: highlight ? "rgba(239,68,68,0.4)" : "#243048",
+      }}
     >
       <div className="flex items-center justify-between">
-        <div className="text-amber-500">{icon}</div>
+        <div className={highlight ? "text-red-400" : "text-amber-500"}>
+          {icon}
+        </div>
         {isLoading ? (
           <SkeletonCard height="32px" width="60px" className="rounded" />
         ) : (
-          <span className="font-mono text-2xl font-bold text-white">
+          <span
+            className={`font-mono text-2xl font-bold ${highlight ? "text-red-400" : "text-white"}`}
+          >
             {value}
           </span>
         )}
@@ -228,6 +259,243 @@ function SkeletonRows({ count = 6 }: { count?: number }) {
   );
 }
 
+// ─── AI Live Scan Panel ───────────────────────────────────────────────────────
+
+function AIScanPanel() {
+  const [currentMsgIdx, setCurrentMsgIdx] = useState(0);
+  const [scanLog, setScanLog] = useState<string[]>([]);
+  const [isScanning, setIsScanning] = useState(true);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isScanning) return;
+    const interval = setInterval(() => {
+      setCurrentMsgIdx((prev) => {
+        const next = (prev + 1) % AI_SCAN_MESSAGES.length;
+        const msg = AI_SCAN_MESSAGES[next];
+        setScanLog((log) => {
+          const ts = new Date().toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          });
+          const newLog = [...log, `[${ts}] ${msg}`];
+          // Keep last 40 lines
+          return newLog.slice(-40);
+        });
+        return next;
+      });
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [isScanning]);
+
+  // Auto-scroll to bottom — scanLog dep is intentional to trigger on each new line
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional dep
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [scanLog]);
+
+  return (
+    <div
+      className="rounded border"
+      style={{ backgroundColor: "#070d1a", borderColor: "#1e2d45" }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between border-b px-4 py-2.5"
+        style={{ borderColor: "#1e2d45" }}
+      >
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Bot className="h-4 w-4 text-amber-400" />
+            {isScanning && (
+              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+            )}
+          </div>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-amber-400 font-bold">
+            AI Smart System
+          </span>
+          <span
+            className="font-mono text-[10px] uppercase tracking-widest rounded px-1.5 py-0.5"
+            style={{
+              color: isScanning ? "#22c55e" : "#94a3b8",
+              backgroundColor: isScanning
+                ? "rgba(34,197,94,0.1)"
+                : "rgba(100,116,139,0.1)",
+              border: `1px solid ${isScanning ? "rgba(34,197,94,0.3)" : "rgba(100,116,139,0.3)"}`,
+            }}
+          >
+            {isScanning ? "● ACTIVE SCAN" : "○ PAUSED"}
+          </span>
+        </div>
+        <button
+          type="button"
+          data-ocid="monitoring.ai_scan.toggle_button"
+          onClick={() => setIsScanning((v) => !v)}
+          className="flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-400 hover:text-white transition-colors"
+          style={{ border: "1px solid #2a3347" }}
+        >
+          {isScanning ? (
+            <>
+              <SkipForward className="h-3 w-3" />
+              Pause
+            </>
+          ) : (
+            <>
+              <Radio className="h-3 w-3" />
+              Resume
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Current scan status */}
+      <div
+        className="border-b px-4 py-2"
+        style={{ borderColor: "#1e2d45", backgroundColor: "#0a111f" }}
+      >
+        <div className="flex items-center gap-2">
+          {isScanning ? (
+            <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />
+          ) : (
+            <Activity className="h-3 w-3 text-slate-500 shrink-0" />
+          )}
+          <p className="font-mono text-[11px] text-amber-300/80 truncate">
+            {AI_SCAN_MESSAGES[currentMsgIdx]}
+          </p>
+        </div>
+      </div>
+
+      {/* Scroll log */}
+      <div className="h-40 overflow-y-auto px-4 py-3 space-y-0.5 font-mono text-[10px]">
+        {scanLog.length === 0 ? (
+          <p className="text-slate-600 italic">Awaiting scan output…</p>
+        ) : (
+          scanLog.map((line, i) => {
+            const isThreat =
+              line.toLowerCase().includes("flagging") ||
+              line.toLowerCase().includes("threat") ||
+              line.toLowerCase().includes("escalating") ||
+              line.toLowerCase().includes("detected") ||
+              line.toLowerCase().includes("anomalous");
+            return (
+              <p
+                key={`log-${i}-${line.slice(0, 10)}`}
+                className={isThreat ? "text-amber-400/90" : "text-slate-500"}
+              >
+                {line}
+              </p>
+            );
+          })
+        )}
+        <div ref={logEndRef} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Threat Intelligence Cards ────────────────────────────────────────────────
+
+function ThreatLevelBar({ score }: { score: number }) {
+  const color =
+    score >= 80
+      ? "#ef4444"
+      : score >= 60
+        ? "#f97316"
+        : score >= 40
+          ? "#eab308"
+          : "#22c55e";
+  return (
+    <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+      <div
+        className="h-full rounded-full transition-all duration-700"
+        style={{ width: `${score}%`, backgroundColor: color }}
+      />
+    </div>
+  );
+}
+
+function ThreatIntelPanel({ scores }: { scores: ThreatScore[] }) {
+  return (
+    <div
+      className="rounded border"
+      style={{ backgroundColor: "#0d1525", borderColor: "#1e2d45" }}
+    >
+      <div
+        className="flex items-center gap-2 border-b px-4 py-2.5"
+        style={{ borderColor: "#1e2d45" }}
+      >
+        <Zap className="h-4 w-4 text-amber-400" />
+        <span className="font-mono text-[11px] uppercase tracking-widest text-amber-400 font-bold">
+          Threat Intelligence
+        </span>
+        <span className="font-mono text-[10px] text-slate-500 ml-1">
+          — Per-user risk scores
+        </span>
+      </div>
+      <div className="divide-y" style={{ borderColor: "#1e2d45" }}>
+        {scores.map((s) => (
+          <div key={s.name} className="px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-mono text-xs font-bold text-white">
+                  {s.name}
+                </span>
+                <span className="ml-2 font-mono text-[10px] text-slate-500 uppercase">
+                  {s.rank}
+                </span>
+              </div>
+              <SeverityBadge severity={s.level} />
+            </div>
+            <ThreatLevelBar score={s.score} />
+            <p className="font-mono text-[10px] text-slate-400 leading-relaxed">
+              {s.reason}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Demo Mode Banner ─────────────────────────────────────────────────────────
+
+interface DemoBannerProps {
+  onExit: () => void;
+}
+
+function DemoBanner({ onExit }: DemoBannerProps) {
+  return (
+    <div
+      data-ocid="monitoring.demo_banner"
+      className="flex items-center justify-between gap-3 rounded border px-4 py-3"
+      style={{
+        backgroundColor: "rgba(139,92,246,0.08)",
+        borderColor: "rgba(139,92,246,0.4)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <Bot className="h-4 w-4 text-violet-400 shrink-0" />
+        <p className="font-mono text-[11px] uppercase tracking-wider text-violet-300">
+          <span className="font-bold text-violet-200">DEMO MODE — </span>
+          Showing simulated AI threat data. This is a preview of what the AI
+          Smart System surfaces to the S2 admin.
+        </p>
+      </div>
+      <button
+        type="button"
+        data-ocid="monitoring.demo.exit_button"
+        onClick={onExit}
+        className="shrink-0 rounded px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-violet-300 hover:text-white transition-colors"
+        style={{ border: "1px solid rgba(139,92,246,0.4)" }}
+      >
+        Exit Demo
+      </button>
+    </div>
+  );
+}
+
 // ─── Anomaly Table ────────────────────────────────────────────────────────────
 
 const AUDIT_EVENT_TYPES = [
@@ -248,6 +516,7 @@ interface AnomalyTableProps {
   emptyOcid: string;
   rowOcidPrefix: string;
   resolveOcidPrefix: string;
+  demoMode?: boolean;
 }
 
 function AnomalyTable({
@@ -261,6 +530,7 @@ function AnomalyTable({
   emptyOcid,
   rowOcidPrefix,
   resolveOcidPrefix,
+  demoMode = false,
 }: AnomalyTableProps) {
   return (
     <div
@@ -308,9 +578,26 @@ function AnomalyTable({
             </TableRow>
           ) : (
             events.map((event, idx) => {
+              const isCritical = event.severity.toLowerCase() === "critical";
               const isHighlighted =
-                event.severity.toLowerCase() === "high" &&
+                (event.severity.toLowerCase() === "high" ||
+                  event.severity.toLowerCase() === "critical") &&
                 event.isSystemGenerated;
+
+              // Demo-mode names
+              const demoProfileName =
+                demoMode && event.id === "demo-breach-001"
+                  ? "David Morton (CIV)"
+                  : (demoMode && event.id.startsWith("demo-freq")) ||
+                      event.id.startsWith("demo-download") ||
+                      event.id.startsWith("demo-message")
+                    ? "SGT Maria Reyes"
+                    : demoMode &&
+                        (event.id.startsWith("demo-audit") ||
+                          event.id.startsWith("demo-perm"))
+                      ? "CPT James Harris"
+                      : undefined;
+
               return (
                 <TableRow
                   key={event.id}
@@ -318,12 +605,19 @@ function AnomalyTable({
                   style={{
                     borderColor: "#1e2d45",
                     borderLeftWidth: isHighlighted ? "4px" : undefined,
-                    borderLeftColor: isHighlighted ? "#f59e0b" : undefined,
+                    borderLeftColor: isCritical
+                      ? "#ef4444"
+                      : isHighlighted
+                        ? "#f59e0b"
+                        : undefined,
                     borderLeftStyle: isHighlighted ? "solid" : undefined,
+                    backgroundColor: isCritical
+                      ? "rgba(239,68,68,0.04)"
+                      : undefined,
                   }}
                   className="transition-colors hover:bg-[#131c2e]"
                 >
-                  <TableCell className="font-mono text-xs text-slate-300 whitespace-nowrap max-w-[160px] truncate">
+                  <TableCell className="font-mono text-xs text-slate-300 whitespace-nowrap max-w-[180px] truncate">
                     {event.eventType}
                   </TableCell>
                   <TableCell>
@@ -333,22 +627,29 @@ function AnomalyTable({
                     <SourceBadge isSystemGenerated={event.isSystemGenerated} />
                   </TableCell>
                   <TableCell className="font-mono text-xs text-slate-400 whitespace-nowrap">
-                    {getProfileName(profiles, event.affectedUserId)}
+                    {getProfileName(
+                      profiles,
+                      event.affectedUserId,
+                      demoMode,
+                      demoProfileName,
+                    )}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-slate-400 whitespace-nowrap">
-                    {getFolderName(folders, event.affectedFolderId)}
+                  <TableCell className="font-mono text-xs text-slate-400 whitespace-nowrap max-w-[160px] truncate">
+                    {getFolderName(folders, event.affectedFolderId, demoMode)}
                   </TableCell>
                   <TableCell className="font-mono text-[10px] text-slate-500 whitespace-nowrap">
-                    {formatTimestamp(event.detectedAt)}
+                    {timeAgo(event.detectedAt)}
                   </TableCell>
                   <TableCell>
                     {event.resolved ? (
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-green-500">
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-green-500">
+                        <CheckCircle2 className="h-3 w-3" />
                         Resolved
                       </span>
                     ) : (
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-amber-400">
-                        Unresolved
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-400">
+                        <XCircle className="h-3 w-3" />
+                        Open
                       </span>
                     )}
                   </TableCell>
@@ -682,11 +983,130 @@ function LogAnomalyModal({
   );
 }
 
+// ─── Event Detail Modal ───────────────────────────────────────────────────────
+
+interface EventDetailModalProps {
+  event: AnomalyEvent | null;
+  onClose: () => void;
+  demoMode: boolean;
+  profiles: ExtendedProfile[];
+  folders: Folder[];
+}
+
+function EventDetailModal({
+  event,
+  onClose,
+  demoMode,
+  profiles,
+  folders,
+}: EventDetailModalProps) {
+  if (!event) return null;
+  return (
+    <Dialog
+      open={!!event}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent
+        data-ocid="monitoring.event_detail.modal"
+        className="border sm:max-w-xl"
+        style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+      >
+        <DialogHeader>
+          <DialogTitle className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            Event Detail
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <SeverityBadge severity={event.severity} />
+            <SourceBadge isSystemGenerated={event.isSystemGenerated} />
+            {event.resolved ? (
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-green-500">
+                <CheckCircle2 className="h-3 w-3" /> Resolved
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-400">
+                <XCircle className="h-3 w-3" /> Open
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-[11px] font-mono">
+            <div>
+              <p className="text-slate-500 uppercase tracking-wider mb-0.5">
+                Event Type
+              </p>
+              <p className="text-white">{event.eventType}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 uppercase tracking-wider mb-0.5">
+                Detected
+              </p>
+              <p className="text-white">{timeAgo(event.detectedAt)}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 uppercase tracking-wider mb-0.5">
+                Affected User
+              </p>
+              <p className="text-white">
+                {getProfileName(profiles, event.affectedUserId, demoMode)}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500 uppercase tracking-wider mb-0.5">
+                Affected Folder
+              </p>
+              <p className="text-white truncate">
+                {getFolderName(folders, event.affectedFolderId, demoMode)}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">
+              AI Analysis
+            </p>
+            <div
+              className="rounded p-3"
+              style={{
+                backgroundColor: "#0a111f",
+                border: "1px solid #1e2d45",
+              }}
+            >
+              <p className="font-mono text-xs text-slate-300 leading-relaxed">
+                {event.description}
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            data-ocid="monitoring.event_detail.close_button"
+            className="font-mono text-xs uppercase tracking-wider text-slate-300 border"
+            style={{ borderColor: "#2a3347" }}
+            onClick={onClose}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AccessMonitoringPage() {
   const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
+
+  // ── Demo mode ─────────────────────────────────────────────────────────────
+  const [demoMode, setDemoMode] = useState(true);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: statsData, isLoading: statsLoading } = useQuery({
@@ -745,23 +1165,33 @@ export default function AccessMonitoringPage() {
   const [resolveOpen, setResolveOpen] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
+  const [detailEvent, setDetailEvent] = useState<AnomalyEvent | null>(null);
+
+  // ── Displayed events (demo vs. live) ─────────────────────────────────────
+  const displayedEvents = useMemo(
+    () => (demoMode ? DEMO_ANOMALY_EVENTS : events),
+    [demoMode, events],
+  );
 
   // ── Filtered events ───────────────────────────────────────────────────────
   const filteredAnomalyEvents = useMemo(() => {
-    if (userFilter === "all") return events;
-    return events.filter((e) => e.affectedUserId?.toString() === userFilter);
-  }, [events, userFilter]);
+    if (userFilter === "all") return displayedEvents;
+    return displayedEvents.filter(
+      (e) => e.affectedUserId?.toString() === userFilter,
+    );
+  }, [displayedEvents, userFilter]);
 
   const auditEvents = useMemo(() => {
-    return events.filter((e) =>
+    return displayedEvents.filter((e) =>
       AUDIT_EVENT_TYPES.some((t) => e.eventType.toLowerCase().includes(t)),
     );
-  }, [events]);
+  }, [displayedEvents]);
 
   const folderActivityEvents = useMemo(() => {
-    if (folderFilter === "all") return events.filter((e) => e.affectedFolderId);
-    return events.filter((e) => e.affectedFolderId === folderFilter);
-  }, [events, folderFilter]);
+    if (folderFilter === "all")
+      return displayedEvents.filter((e) => e.affectedFolderId);
+    return displayedEvents.filter((e) => e.affectedFolderId === folderFilter);
+  }, [displayedEvents, folderFilter]);
 
   // ── Summary count ─────────────────────────────────────────────────────────
   const selectedUserName = useMemo(() => {
@@ -772,12 +1202,33 @@ export default function AccessMonitoringPage() {
 
   const userEventCount = useMemo(() => {
     if (userFilter === "all") return 0;
-    return events.filter((e) => e.affectedUserId?.toString() === userFilter)
-      .length;
-  }, [events, userFilter]);
+    return displayedEvents.filter(
+      (e) => e.affectedUserId?.toString() === userFilter,
+    ).length;
+  }, [displayedEvents, userFilter]);
+
+  // ── Demo stats override ───────────────────────────────────────────────────
+  const demoStats = {
+    totalUsers: BigInt(3),
+    totalSections: BigInt(2),
+    totalFolders: BigInt(4),
+    totalDocuments: BigInt(27),
+    unresolvedAnomalies: BigInt(
+      DEMO_ANOMALY_EVENTS.filter((e) => !e.resolved).length,
+    ),
+    totalMessages: BigInt(14),
+  };
+
+  const activeStats = demoMode ? demoStats : statsData;
 
   // ── Resolve handler ───────────────────────────────────────────────────────
   async function handleConfirmResolve() {
+    if (demoMode) {
+      toast.success("Demo: anomaly marked resolved (no backend call)");
+      setResolveOpen(false);
+      setResolveTarget(null);
+      return;
+    }
     if (!actor || !resolveTarget) return;
     setIsResolving(true);
     try {
@@ -811,40 +1262,67 @@ export default function AccessMonitoringPage() {
   }
 
   // ── Stat values ───────────────────────────────────────────────────────────
+  const unresolvedCount = activeStats
+    ? Number(activeStats.unresolvedAnomalies)
+    : 0;
+
   const stats = [
     {
       icon: <Users className="h-5 w-5" />,
       label: "Total Users",
-      value: statsData ? String(statsData.totalUsers) : "—",
+      value: activeStats ? String(activeStats.totalUsers) : "—",
+      highlight: false,
     },
     {
       icon: <Layers className="h-5 w-5" />,
       label: "Total Sections",
-      value: statsData ? String(statsData.totalSections) : "—",
+      value: activeStats ? String(activeStats.totalSections) : "—",
+      highlight: false,
     },
     {
       icon: <FolderOpen className="h-5 w-5" />,
       label: "Total Folders",
-      value: statsData ? String(statsData.totalFolders) : "—",
+      value: activeStats ? String(activeStats.totalFolders) : "—",
+      highlight: false,
     },
     {
       icon: <FileText className="h-5 w-5" />,
       label: "Total Documents",
-      value: statsData ? String(statsData.totalDocuments) : "—",
+      value: activeStats ? String(activeStats.totalDocuments) : "—",
+      highlight: false,
     },
     {
       icon: <ShieldAlert className="h-5 w-5" />,
       label: "Unresolved Anomalies",
-      value: statsData ? String(statsData.unresolvedAnomalies) : "—",
+      value: activeStats ? String(activeStats.unresolvedAnomalies) : "—",
+      highlight: unresolvedCount > 3,
     },
     {
       icon: <MessageSquare className="h-5 w-5" />,
       label: "Total Messages",
-      value: statsData ? String(statsData.totalMessages) : "—",
+      value: activeStats ? String(activeStats.totalMessages) : "—",
+      highlight: false,
     },
   ];
 
-  const isDataLoading = profilesLoading || foldersLoading || eventsLoading;
+  const isDataLoading =
+    !demoMode && (profilesLoading || foldersLoading || eventsLoading);
+
+  // ── Folder options for filter ─────────────────────────────────────────────
+  const folderOptions = demoMode ? DEMO_FOLDERS : folders;
+  const profileOptions = demoMode
+    ? DEMO_PROFILES.map((p) => ({
+        principalId: { toString: () => p.principalId } as any,
+        name: p.name,
+        rank: p.rank,
+        orgRole: p.orgRole,
+        clearanceLevel: BigInt(p.clearanceLevel),
+        isS2Admin: false,
+        isValidatedByCommander: true,
+        email: "",
+        registered: true,
+      }))
+    : profiles;
 
   return (
     <div
@@ -855,9 +1333,12 @@ export default function AccessMonitoringPage() {
       <TopNav />
 
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
+        <div className="mx-auto max-w-7xl space-y-5">
           {/* ── Page Header ─────────────────────────────────────────────── */}
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div
+            className="flex flex-wrap items-start justify-between gap-4 border-b pb-4"
+            style={{ borderColor: "#1a2235" }}
+          >
             <div className="flex items-center gap-3">
               <Shield className="h-6 w-6 text-amber-500" />
               <div>
@@ -869,7 +1350,28 @@ export default function AccessMonitoringPage() {
                 </p>
               </div>
             </div>
+
+            {/* Demo toggle */}
+            <button
+              type="button"
+              data-ocid="monitoring.demo.toggle_button"
+              onClick={() => setDemoMode((v) => !v)}
+              className="flex items-center gap-2 rounded px-3 py-2 font-mono text-[11px] uppercase tracking-wider transition-colors"
+              style={{
+                backgroundColor: demoMode
+                  ? "rgba(139,92,246,0.12)"
+                  : "rgba(245,158,11,0.08)",
+                border: `1px solid ${demoMode ? "rgba(139,92,246,0.4)" : "rgba(245,158,11,0.3)"}`,
+                color: demoMode ? "#a78bfa" : "#f59e0b",
+              }}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {demoMode ? "Demo Mode — ON" : "Preview AI Demo"}
+            </button>
           </div>
+
+          {/* ── Demo Banner ──────────────────────────────────────────────── */}
+          {demoMode && <DemoBanner onExit={() => setDemoMode(false)} />}
 
           {/* ── Stat Cards ──────────────────────────────────────────────── */}
           <section
@@ -882,10 +1384,19 @@ export default function AccessMonitoringPage() {
                 icon={s.icon}
                 value={s.value}
                 label={s.label}
-                isLoading={statsLoading}
+                isLoading={!demoMode && statsLoading}
+                highlight={s.highlight}
               />
             ))}
           </section>
+
+          {/* ── AI + Threat Intel Row ────────────────────────────────────── */}
+          {demoMode && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <AIScanPanel />
+              <ThreatIntelPanel scores={DEMO_THREAT_SCORES} />
+            </div>
+          )}
 
           {/* ── Tabs ────────────────────────────────────────────────────── */}
           <Tabs defaultValue="anomaly-events" className="space-y-4">
@@ -900,6 +1411,11 @@ export default function AccessMonitoringPage() {
                   className="font-mono text-[10px] uppercase tracking-widest data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-400"
                 >
                   Anomaly Events
+                  {demoMode && (
+                    <span className="ml-1.5 rounded-full bg-red-500/20 px-1.5 py-0.5 font-mono text-[9px] text-red-400">
+                      {DEMO_ANOMALY_EVENTS.filter((e) => !e.resolved).length}
+                    </span>
+                  )}
                 </TabsTrigger>
                 <TabsTrigger
                   value="audit-trail"
@@ -917,7 +1433,6 @@ export default function AccessMonitoringPage() {
                 </TabsTrigger>
               </TabsList>
 
-              {/* Log Anomaly button — always visible but only relevant for Anomaly Events tab */}
               <Button
                 type="button"
                 data-ocid="monitoring.log_anomaly.open_modal_button"
@@ -932,12 +1447,11 @@ export default function AccessMonitoringPage() {
 
             {/* ── Anomaly Events Tab ───────────────────────────────────── */}
             <TabsContent value="anomaly-events" className="space-y-4 mt-0">
-              {/* Per-user filter + summary */}
               <div className="flex flex-wrap items-center gap-3">
                 <Select value={userFilter} onValueChange={setUserFilter}>
                   <SelectTrigger
                     data-ocid="monitoring.user_filter.select"
-                    className="w-52 border font-mono text-xs text-white"
+                    className="w-56 border font-mono text-xs text-white"
                     style={{
                       backgroundColor: "#1a2235",
                       borderColor: "#2a3347",
@@ -957,7 +1471,7 @@ export default function AccessMonitoringPage() {
                     >
                       All Users
                     </SelectItem>
-                    {profiles.map((p) => (
+                    {profileOptions.map((p) => (
                       <SelectItem
                         key={p.principalId.toString()}
                         value={p.principalId.toString()}
@@ -973,12 +1487,13 @@ export default function AccessMonitoringPage() {
                 {selectedUserName && (
                   <p className="font-mono text-[11px] text-slate-400">
                     <span className="text-amber-400">{selectedUserName}</span>
-                    {" has accessed classified resources "}
+                    {" has "}
                     <span className="text-white font-bold">
                       {userEventCount}
                     </span>
-                    {" time"}
-                    {userEventCount !== 1 ? "s" : ""}
+                    {" anomal"}
+                    {userEventCount !== 1 ? "ies" : "y"}
+                    {" logged"}
                   </p>
                 )}
               </div>
@@ -1008,13 +1523,20 @@ export default function AccessMonitoringPage() {
                   emptyOcid="monitoring.anomaly.empty_state"
                   rowOcidPrefix="monitoring.anomaly.row"
                   resolveOcidPrefix="monitoring.anomaly.resolve_button"
+                  demoMode={demoMode}
                 />
+              )}
+
+              {/* Detail view note */}
+              {filteredAnomalyEvents.length > 0 && (
+                <p className="font-mono text-[10px] text-slate-600 text-center">
+                  Click any row to view full AI analysis
+                </p>
               )}
             </TabsContent>
 
             {/* ── Audit Trail Tab ──────────────────────────────────────── */}
             <TabsContent value="audit-trail" className="space-y-4 mt-0">
-              {/* Security banner */}
               <div
                 className="flex items-start gap-2 rounded border px-4 py-3"
                 style={{
@@ -1044,6 +1566,7 @@ export default function AccessMonitoringPage() {
                 emptyOcid="monitoring.audit.empty_state"
                 rowOcidPrefix="monitoring.audit.row"
                 resolveOcidPrefix="monitoring.audit.resolve_button"
+                demoMode={demoMode}
               />
             </TabsContent>
 
@@ -1052,7 +1575,7 @@ export default function AccessMonitoringPage() {
               <Select value={folderFilter} onValueChange={setFolderFilter}>
                 <SelectTrigger
                   data-ocid="monitoring.folder_filter.select"
-                  className="w-56 border font-mono text-xs text-white"
+                  className="w-64 border font-mono text-xs text-white"
                   style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
                 >
                   <SelectValue placeholder="All Folders" />
@@ -1066,7 +1589,7 @@ export default function AccessMonitoringPage() {
                   >
                     All Folders
                   </SelectItem>
-                  {folders.map((f) => (
+                  {folderOptions.map((f) => (
                     <SelectItem
                       key={f.id}
                       value={f.id}
@@ -1089,6 +1612,7 @@ export default function AccessMonitoringPage() {
                 emptyOcid="monitoring.folder_activity.empty_state"
                 rowOcidPrefix="monitoring.folder.row"
                 resolveOcidPrefix="monitoring.folder.resolve_button"
+                demoMode={demoMode}
               />
             </TabsContent>
           </Tabs>
@@ -1117,6 +1641,15 @@ export default function AccessMonitoringPage() {
         profiles={profiles}
         folders={folders}
         onCreated={handleEventCreated}
+      />
+
+      {/* ── Event Detail Modal ───────────────────────────────────────────── */}
+      <EventDetailModal
+        event={detailEvent}
+        onClose={() => setDetailEvent(null)}
+        demoMode={demoMode}
+        profiles={profiles}
+        folders={folders}
       />
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}

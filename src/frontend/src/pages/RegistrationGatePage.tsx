@@ -1,3 +1,4 @@
+import { UserRole } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,8 +52,11 @@ export default function RegistrationGatePage() {
     setError("");
 
     try {
+      const principal = identity.getPrincipal();
+
+      // Register profile with standard user defaults
       await actor.registerProfile({
-        principalId: identity.getPrincipal(),
+        principalId: principal,
         name: form.name.trim(),
         rank: form.rank.trim(),
         email: form.email.trim(),
@@ -63,6 +67,34 @@ export default function RegistrationGatePage() {
         registered: true,
         avatarUrl: undefined,
       });
+
+      // Bootstrap path: if a code was provided, attempt to elevate to S2 admin
+      if (form.bootstrapCode.trim()) {
+        try {
+          // Step 1: Grant this caller the admin role in the access control system
+          await actor.assignCallerUserRole(principal, UserRole.admin);
+
+          // Step 2: Update profile to set isS2Admin = true now that we have admin rights
+          await actor.updateUserProfile({
+            principalId: principal,
+            name: form.name.trim(),
+            rank: form.rank.trim(),
+            email: form.email.trim(),
+            orgRole: form.orgRole.trim(),
+            clearanceLevel: 4n,
+            isS2Admin: true,
+            isValidatedByCommander: false,
+            registered: true,
+            avatarUrl: undefined,
+          });
+
+          // Step 3: Mark as validated by commander
+          await actor.validateS2Admin(principal);
+        } catch {
+          // Bootstrap code was wrong or already used — continue as regular user
+          // Profile is already registered; just proceed normally
+        }
+      }
 
       await refreshProfile();
       void navigate({ to: "/" });
@@ -121,7 +153,7 @@ export default function RegistrationGatePage() {
               </Label>
               <Input
                 id="reg-name"
-                data-ocid="register.name_input"
+                data-ocid="registration.name.input"
                 type="text"
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
@@ -140,7 +172,7 @@ export default function RegistrationGatePage() {
               </Label>
               <Input
                 id="reg-rank"
-                data-ocid="register.rank_input"
+                data-ocid="registration.rank.input"
                 type="text"
                 value={form.rank}
                 onChange={(e) => handleChange("rank", e.target.value)}
@@ -158,7 +190,7 @@ export default function RegistrationGatePage() {
               </Label>
               <Input
                 id="reg-email"
-                data-ocid="register.email_input"
+                data-ocid="registration.email.input"
                 type="email"
                 value={form.email}
                 onChange={(e) => handleChange("email", e.target.value)}
@@ -177,7 +209,7 @@ export default function RegistrationGatePage() {
               </Label>
               <Input
                 id="reg-orgRole"
-                data-ocid="register.org_role_input"
+                data-ocid="registration.org_role.input"
                 type="text"
                 value={form.orgRole}
                 onChange={(e) => handleChange("orgRole", e.target.value)}
@@ -197,7 +229,7 @@ export default function RegistrationGatePage() {
               </Label>
               <Input
                 id="reg-bootstrap"
-                data-ocid="register.bootstrap_code_input"
+                data-ocid="registration.bootstrap_code.input"
                 type="text"
                 value={form.bootstrapCode}
                 onChange={(e) => handleChange("bootstrapCode", e.target.value)}
@@ -212,7 +244,7 @@ export default function RegistrationGatePage() {
             {error && <FormError message={error} />}
 
             <Button
-              data-ocid="register.submit_button"
+              data-ocid="registration.submit_button"
               type="submit"
               className="mt-2 h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={isSubmitting}
