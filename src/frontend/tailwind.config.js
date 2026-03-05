@@ -15,7 +15,18 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        mono: ['"JetBrains Mono"', "monospace"],
+        body: ["Sora", "sans-serif"],
+        heading: ['"Bricolage Grotesque"', "sans-serif"],
+      },
       colors: {
+        navy: "oklch(var(--navy))",
+        slate: "oklch(var(--slate))",
+        amber: {
+          DEFAULT: "oklch(var(--amber))",
+          dim: "oklch(var(--amber-dim))",
+        },
         border: "oklch(var(--border))",
         input: "oklch(var(--input))",
         ring: "oklch(var(--ring) / <alpha-value>)",
