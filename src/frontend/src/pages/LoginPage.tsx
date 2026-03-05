@@ -7,7 +7,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export default function LoginPage() {
-  const { login, identity, isLoggingIn, isInitializing } =
+  const { login, identity, isLoggingIn, isInitializing, isLoginError } =
     useInternetIdentity();
   const { actor, isFetching } = useActor();
   const navigate = useNavigate();
@@ -22,7 +22,10 @@ export default function LoginPage() {
     setCheckingProfile(false);
   }, []);
 
-  // After auth success + actor ready — check profile and navigate
+  // After auth success + actor ready — check profile and navigate.
+  // Also handles the case where identity is already valid when Sign In is clicked
+  // (passkey completed in II popup before button interaction): isLoginError with
+  // a valid identity means we're already authenticated, so proceed normally.
   useEffect(() => {
     if (
       !identity ||
@@ -57,7 +60,11 @@ export default function LoginPage() {
     void run();
   }, [identity, actor, isFetching, checkingProfile, navigate]);
 
-  const isLoading = isLoggingIn || isInitializing || checkingProfile;
+  // If the II hook reports "already authenticated" error but we have a valid
+  // identity, the error is benign — the identity effect above will handle navigation.
+  // Only show the button as loading when truly in progress.
+  const isLoading =
+    (isLoggingIn || isInitializing || checkingProfile) && !isLoginError;
 
   return (
     <div
@@ -114,9 +121,9 @@ export default function LoginPage() {
           data-ocid="login.primary_button"
           className="h-12 w-64 bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground shadow-[0_0_20px_oklch(0.72_0.175_70_/_0.4)] transition-all duration-300 hover:bg-primary/90 hover:shadow-[0_0_30px_oklch(0.72_0.175_70_/_0.6)] disabled:opacity-50"
           onClick={login}
-          disabled={isLoading}
+          disabled={isLoading || checkingProfile || warpActive}
         >
-          {isLoading ? (
+          {isLoading || checkingProfile || warpActive ? (
             <span className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               {warpActive ? "Initializing..." : "Authenticating..."}
