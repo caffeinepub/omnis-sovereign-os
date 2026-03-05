@@ -27,6 +27,8 @@ const HubPage = lazy(() => import("@/pages/HubPage"));
 const StubPage = lazy(() => import("@/pages/StubPage"));
 const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
 const MessagesPage = lazy(() => import("@/pages/MessagesPage"));
+const PersonnelPage = lazy(() => import("@/pages/PersonnelPage"));
+const EmailDirectoryPage = lazy(() => import("@/pages/EmailDirectoryPage"));
 
 // --- Page loader ---
 function PageLoader() {
@@ -44,19 +46,22 @@ function PageLoader() {
 
 // --- Authenticated Layout ---
 function AuthenticatedLayout() {
-  const { identity, isInitializing, clear } = useInternetIdentity();
+  const { identity, isInitializing, isLoginIdle, clear } =
+    useInternetIdentity();
   const router = useRouter();
   const { showWarning, showExpired, handleStayLoggedIn, handleExpiredSignIn } =
     useSessionGuard();
 
   useEffect(() => {
-    if (isInitializing) return;
-    if (!identity) {
+    // Redirect to login if: not initializing AND no identity present
+    // This covers both the normal logout case and the post-clear idle state
+    if (!isInitializing && !identity) {
       void router.navigate({ to: "/login" });
     }
   }, [identity, isInitializing, router]);
 
-  if (isInitializing) {
+  // Show initializing only briefly — if idle with no identity, don't block
+  if (isInitializing && !isLoginIdle) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
@@ -178,7 +183,7 @@ const personnelRoute = createRoute({
   path: "/personnel",
   component: () => (
     <Suspense fallback={<PageLoader />}>
-      <StubPage title="Personnel Directory" />
+      <PersonnelPage />
     </Suspense>
   ),
 });
@@ -188,7 +193,7 @@ const emailDirectoryRoute = createRoute({
   path: "/email-directory",
   component: () => (
     <Suspense fallback={<PageLoader />}>
-      <StubPage title="Email Directory" />
+      <EmailDirectoryPage />
     </Suspense>
   ),
 });

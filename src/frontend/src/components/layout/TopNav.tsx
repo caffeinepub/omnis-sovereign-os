@@ -70,6 +70,13 @@ export function TopNav() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const handleSignOut = () => {
+    // Clear all cached queries so stale data doesn't bleed into the next session
+    queryClient.clear();
+    clear();
+    void navigate({ to: "/login" });
+  };
+
   const { data: unreadCount = 0 } = useQuery<number>({
     queryKey: ["unreadNotificationCount"],
     queryFn: async () => {
@@ -565,7 +572,7 @@ export function TopNav() {
             <DropdownMenuItem
               data-ocid="topnav.signout.button"
               className="cursor-pointer font-mono text-xs uppercase tracking-widest text-red-400 hover:text-red-300 focus:text-red-300"
-              onClick={clear}
+              onClick={handleSignOut}
             >
               <LogOut className="mr-2 h-3.5 w-3.5" />
               Sign Out

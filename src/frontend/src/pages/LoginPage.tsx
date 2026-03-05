@@ -15,6 +15,13 @@ export default function LoginPage() {
   const [checkingProfile, setCheckingProfile] = useState(false);
   const hasNavigated = useRef(false);
 
+  // Reset navigation guard every time this page mounts (covers logout → re-login)
+  useEffect(() => {
+    hasNavigated.current = false;
+    setWarpActive(false);
+    setCheckingProfile(false);
+  }, []);
+
   // After auth success + actor ready — check profile and navigate
   useEffect(() => {
     if (
