@@ -29,6 +29,7 @@ const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
 const MessagesPage = lazy(() => import("@/pages/MessagesPage"));
 const PersonnelPage = lazy(() => import("@/pages/PersonnelPage"));
 const EmailDirectoryPage = lazy(() => import("@/pages/EmailDirectoryPage"));
+const FileStoragePage = lazy(() => import("@/pages/FileStoragePage"));
 
 // --- Page loader ---
 function PageLoader() {
@@ -203,7 +204,7 @@ const fileStorageRoute = createRoute({
   path: "/file-storage",
   component: () => (
     <Suspense fallback={<PageLoader />}>
-      <StubPage title="File Storage" />
+      <FileStoragePage />
     </Suspense>
   ),
 });
