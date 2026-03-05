@@ -339,8 +339,14 @@ export function TopNav() {
   const handleSignOut = () => {
     // Clear all cached queries so stale data doesn't bleed into the next session
     queryClient.clear();
+    // Call clear() then do a hard reload — this fully resets the AuthClient and
+    // all in-memory state, which is the only reliable way to allow re-login
+    // after logout with Internet Identity.
     clear();
-    void navigate({ to: "/login" });
+    // Small delay so clear()'s logout() promise can start before we reload
+    setTimeout(() => {
+      window.location.href = "/login";
+    }, 300);
   };
 
   const { data: unreadCount = 0 } = useQuery<number>({
