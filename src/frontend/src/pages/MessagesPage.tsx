@@ -698,8 +698,8 @@ export default function MessagesPage() {
   // ── Select message + mark as read ─────────────────────────────────────────
   async function handleSelectMessage(msg: Message) {
     setSelectedMessage(msg);
-    // Mark as read if unread inbox message
-    if (!msg.read && actor) {
+    // Only mark as read for inbox messages
+    if (activeTab === "inbox" && !msg.read && actor) {
       try {
         await actor.markMessageRead(msg.id);
         setInboxMessages((prev) =>
@@ -715,7 +715,7 @@ export default function MessagesPage() {
   function handleMessageDeleted(id: string) {
     setInboxMessages((prev) => prev.filter((m) => m.id !== id));
     setSentMessages((prev) => prev.filter((m) => m.id !== id));
-    setSelectedMessage(null);
+    setSelectedMessage((prev) => (prev?.id === id ? null : prev));
   }
 
   // ── Reply sent — reload to get new reply ───────────────────────────────────

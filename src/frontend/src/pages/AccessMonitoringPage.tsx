@@ -1106,11 +1106,14 @@ export default function AccessMonitoringPage() {
   const { identity } = useInternetIdentity();
 
   // ── Demo mode ─────────────────────────────────────────────────────────────
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
+
+  // ── Principal for query key scoping ───────────────────────────────────────
+  const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ["platform-stats"],
+    queryKey: [principalStr, "platform-stats"],
     queryFn: async () => {
       if (!actor) return null;
       return actor.getPlatformStats();
@@ -1121,7 +1124,7 @@ export default function AccessMonitoringPage() {
   const { data: profiles = [], isLoading: profilesLoading } = useQuery<
     ExtendedProfile[]
   >({
-    queryKey: ["monitoring-profiles"],
+    queryKey: [principalStr, "monitoring-profiles"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAllProfiles();
@@ -1130,7 +1133,7 @@ export default function AccessMonitoringPage() {
   });
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<Folder[]>({
-    queryKey: ["monitoring-folders"],
+    queryKey: [principalStr, "monitoring-folders"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAllFolders();
@@ -1141,7 +1144,7 @@ export default function AccessMonitoringPage() {
   const { data: rawEvents = [], isLoading: eventsLoading } = useQuery<
     AnomalyEvent[]
   >({
-    queryKey: ["anomaly-events"],
+    queryKey: [principalStr, "anomaly-events"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAnomalyEvents();
@@ -1154,10 +1157,12 @@ export default function AccessMonitoringPage() {
   const [hasInitializedEvents, setHasInitializedEvents] = useState(false);
 
   // Sync fetched events into local state once
-  if (!hasInitializedEvents && !eventsLoading && rawEvents.length >= 0) {
-    setHasInitializedEvents(true);
-    setEvents(rawEvents);
-  }
+  useEffect(() => {
+    if (!hasInitializedEvents && !eventsLoading) {
+      setHasInitializedEvents(true);
+      setEvents(rawEvents);
+    }
+  }, [hasInitializedEvents, eventsLoading, rawEvents]);
 
   const [userFilter, setUserFilter] = useState("all");
   const [folderFilter, setFolderFilter] = useState("all");

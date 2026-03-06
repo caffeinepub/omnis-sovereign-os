@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { CLEARANCE_LABELS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil, Users } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -174,7 +175,9 @@ interface EditModalProps {
 
 function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
   const { actor } = useActor();
+  const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
+  const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
   const [name, setName] = useState(profile?.name ?? "");
   const [rank, setRank] = useState(profile?.rank ?? "");
@@ -226,7 +229,9 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
     },
     onSuccess: () => {
       toast.success("Profile updated");
-      void queryClient.invalidateQueries({ queryKey: ["personnel-profiles"] });
+      void queryClient.invalidateQueries({
+        queryKey: [principalStr, "personnel-profiles"],
+      });
       onOpenChange(false);
       onSuccess();
     },
@@ -409,15 +414,18 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
 export default function PersonnelPage() {
   const { actor, isFetching } = useActor();
   const { isS2Admin } = usePermissions();
+  const { identity } = useInternetIdentity();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [clearanceFilter, setClearanceFilter] = useState("all");
   const [editTarget, setEditTarget] = useState<ExtendedProfile | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
+  const principalStr = identity?.getPrincipal().toString() ?? "anon";
+
   // ── Data ─────────────────────────────────────────────────────────────────
   const { data: profiles = [], isLoading } = useQuery<ExtendedProfile[]>({
-    queryKey: ["personnel-profiles"],
+    queryKey: [principalStr, "personnel-profiles"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAllProfiles();

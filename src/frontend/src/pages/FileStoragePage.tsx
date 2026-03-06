@@ -630,6 +630,28 @@ export default function FileStoragePage() {
     }
   }, [actor, isFetching, initializeVaultAndLoadFiles]);
 
+  // Re-run vault init when storage client becomes ready and vault hasn't loaded yet
+  useEffect(() => {
+    if (
+      storageClient &&
+      storageReady &&
+      actor &&
+      !isFetching &&
+      !vaultReady &&
+      !isLoadingInitial
+    ) {
+      void initializeVaultAndLoadFiles();
+    }
+  }, [
+    storageClient,
+    storageReady,
+    actor,
+    isFetching,
+    vaultReady,
+    isLoadingInitial,
+    initializeVaultAndLoadFiles,
+  ]);
+
   // ── Handle upload ───────────────────────────────────────────────────────────
   const handleUpload = useCallback(async () => {
     if (!selectedFile || !storageClient) {

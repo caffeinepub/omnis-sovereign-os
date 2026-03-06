@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
 import { Input } from "@/components/ui/input";
 import { useActor } from "@/hooks/useActor";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQuery } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -39,11 +40,14 @@ function TableSkeleton() {
 
 export default function EmailDirectoryPage() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
   const [searchQuery, setSearchQuery] = useState("");
+
+  const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const { data: profiles = [], isLoading } = useQuery<ExtendedProfile[]>({
-    queryKey: ["email-directory-profiles"],
+    queryKey: [principalStr, "email-directory-profiles"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAllProfiles();

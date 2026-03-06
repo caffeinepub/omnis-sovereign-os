@@ -40,7 +40,7 @@ import {
   Upload,
   User,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 function getInitials(name: string): string {
@@ -102,18 +102,15 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync form state when profile changes or sheet opens
-  const [initialized, setInitialized] = useState(false);
-  if (open && !initialized && profile) {
-    setDisplayName(profile.name);
-    setRank(profile.rank);
-    setEmail(profile.email);
-    setOrgRole(profile.orgRole);
-    setAvatarUrl(profile.avatarUrl ?? "");
-    setInitialized(true);
-  }
-  if (!open && initialized) {
-    setInitialized(false);
-  }
+  useEffect(() => {
+    if (open && profile) {
+      setDisplayName(profile.name);
+      setRank(profile.rank);
+      setEmail(profile.email);
+      setOrgRole(profile.orgRole);
+      setAvatarUrl(profile.avatarUrl ?? "");
+    }
+  }, [open, profile]);
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -330,11 +327,13 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
 
 export function TopNav() {
   const { profile, isS2Admin } = usePermissions();
-  const { clear } = useInternetIdentity();
+  const { clear, identity } = useInternetIdentity();
   const { actor, isFetching } = useActor();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+
+  const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
   const handleSignOut = () => {
     // Clear all react-query cache so stale data doesn't bleed into next session
@@ -350,7 +349,7 @@ export function TopNav() {
   };
 
   const { data: unreadCount = 0 } = useQuery<number>({
-    queryKey: ["unreadNotificationCount"],
+    queryKey: [principalStr, "unreadNotificationCount"],
     queryFn: async () => {
       if (!actor) return 0;
       try {
@@ -371,7 +370,7 @@ export function TopNav() {
     isFetching: notifsFetching,
     refetch: refetchNotifications,
   } = useQuery<Notification[]>({
-    queryKey: ["topnav-notifications-preview"],
+    queryKey: [principalStr, "topnav-notifications-preview"],
     queryFn: async () => {
       if (!actor) return [];
       try {
@@ -392,8 +391,9 @@ export function TopNav() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["unreadNotificationCount"],
+        queryKey: [principalStr, "unreadNotificationCount"],
       });
+      void refetchNotifications();
     },
   });
 
@@ -404,10 +404,10 @@ export function TopNav() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["unreadNotificationCount"],
+        queryKey: [principalStr, "unreadNotificationCount"],
       });
       void queryClient.invalidateQueries({
-        queryKey: ["topnav-notifications-preview"],
+        queryKey: [principalStr, "topnav-notifications-preview"],
       });
       // Immediately refetch while dropdown is open (Step B fix)
       void refetchNotifications();
@@ -418,7 +418,7 @@ export function TopNav() {
   const { data: recentInboxMessages = [], refetch: refetchInbox } = useQuery<
     Message[]
   >({
-    queryKey: ["topnav-inbox-preview"],
+    queryKey: [principalStr, "topnav-inbox-preview"],
     queryFn: async () => {
       if (!actor) return [];
       try {
@@ -440,7 +440,7 @@ export function TopNav() {
 
   const initials = profile?.name ? getInitials(profile.name) : "??";
   const displayName = profile
-    ? `${profile.rank} ${profile.name}`.trim()
+    ? `${profile.rank} ${profile.name}`.trim() || "Unknown"
     : "Unknown";
 
   const navLinks = [
