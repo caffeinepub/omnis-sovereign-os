@@ -23,19 +23,15 @@ export default function LoginPage() {
   }, []);
 
   // After auth success + actor ready — check profile and navigate.
-  // Also handles the case where identity is already valid when Sign In is clicked
-  // (passkey completed in II popup before button interaction): isLoginError with
-  // a valid identity means we're already authenticated, so proceed normally.
+  // Uses a ref-based latch so this runs exactly once per mount cycle
+  // regardless of how many times the effect re-evaluates.
   useEffect(() => {
-    if (
-      !identity ||
-      !actor ||
-      isFetching ||
-      checkingProfile ||
-      hasNavigated.current
-    )
-      return;
+    // Only proceed when we have both identity and a ready actor
+    if (!identity || !actor || isFetching) return;
+    // Ref latch prevents double-fire
+    if (hasNavigated.current) return;
 
+    hasNavigated.current = true;
     setWarpActive(true);
     setCheckingProfile(true);
 
@@ -44,7 +40,6 @@ export default function LoginPage() {
         const profile = await actor.getMyProfile();
         // Warp plays for at least 2.5 seconds
         await new Promise((res) => setTimeout(res, 2500));
-        hasNavigated.current = true;
         if (!profile || !profile.registered) {
           void navigate({ to: "/register" });
         } else if (!profile.isValidatedByCommander && !profile.isS2Admin) {
@@ -53,20 +48,27 @@ export default function LoginPage() {
           void navigate({ to: "/" });
         }
       } catch {
+        // On error, reset so the user can retry by clicking Sign In again
+        hasNavigated.current = false;
         setWarpActive(false);
         setCheckingProfile(false);
-        hasNavigated.current = false;
       }
     };
 
     void run();
-  }, [identity, actor, isFetching, checkingProfile, navigate]);
+    // checkingProfile intentionally excluded — it is set inside this effect,
+    // not a trigger for it. Removing it prevents the double-fire loop.
+  }, [identity, actor, isFetching, navigate]);
 
-  // If the II hook reports "already authenticated" error but we have a valid
-  // identity, the error is benign — the identity effect above will handle navigation.
-  // Only show the button as loading when truly in progress.
+  // Show loading when: actively logging in, initializing, or post-auth profile check.
+  // Treat "already authenticated" (isLoginError + identity present) as non-error —
+  // navigation will fire from the effect above.
+  const alreadyAuthenticated = isLoginError && !!identity;
   const isLoading =
-    (isLoggingIn || isInitializing || checkingProfile) && !isLoginError;
+    isLoggingIn ||
+    (isInitializing && !alreadyAuthenticated) ||
+    checkingProfile ||
+    warpActive;
 
   return (
     <div
@@ -123,12 +125,14 @@ export default function LoginPage() {
           data-ocid="login.primary_button"
           className="h-12 w-64 bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground shadow-[0_0_20px_oklch(0.72_0.175_70_/_0.4)] transition-all duration-300 hover:bg-primary/90 hover:shadow-[0_0_30px_oklch(0.72_0.175_70_/_0.6)] disabled:opacity-50"
           onClick={login}
-          disabled={isLoading || checkingProfile || warpActive}
+          disabled={isLoading}
         >
-          {isLoading || checkingProfile || warpActive ? (
+          {isLoading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              {warpActive ? "Initializing..." : "Authenticating..."}
+              {warpActive || checkingProfile
+                ? "Initializing..."
+                : "Authenticating..."}
             </span>
           ) : (
             "Sign In"

@@ -7,43 +7,29 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 /**
- * Formats a display name in DoD standard: RANK LAST, First MI
- * MI is omitted if blank. All parts are trimmed.
- * Example: formatDisplayName("SGT", "SMITH", "John", "A") → "SGT SMITH, John A"
+ * Formats a DoD-standard display name: RANK LAST, First MI
+ * e.g. formatDisplayName("SGT", "Smith", "John", "A") → "SGT SMITH, John A"
  */
 export function formatDisplayName(
   rank: string,
   lastName: string,
   firstName: string,
-  mi: string,
+  mi?: string,
 ): string {
-  const trimRank = rank.trim();
-  const trimLast = lastName.trim().toUpperCase();
-  const trimFirst = firstName.trim();
-  const trimMi = mi.trim().charAt(0).toUpperCase();
+  const r = rank.trim();
+  const l = lastName.trim().toUpperCase();
+  const f = firstName.trim();
+  const m = mi ? mi.trim().toUpperCase() : "";
 
-  const parts: string[] = [];
+  if (!l && !f) return r || "";
 
-  if (trimRank) parts.push(trimRank);
-
-  let namePart = "";
-  if (trimLast && trimFirst) {
-    namePart = `${trimLast}, ${trimFirst}`;
-  } else if (trimLast) {
-    namePart = trimLast;
-  } else if (trimFirst) {
-    namePart = trimFirst;
-  }
-
-  if (namePart) parts.push(namePart);
-  if (trimMi) parts.push(trimMi);
-
-  return parts.join(" ");
+  const namePart = l && f ? `${l}, ${f}${m ? ` ${m}` : ""}` : l || f;
+  return r ? `${r} ${namePart}` : namePart;
 }
 
 /**
- * Parses a display name back into parts. Best-effort.
- * Handles formats like "SGT SMITH, John A" or "SMITH, John A" or "John Smith"
+ * Parses a DoD-standard display name back into components.
+ * Accepts formats like "SGT SMITH, John A" or "SMITH, John A" or "John Smith"
  */
 export function parseDisplayName(displayName: string): {
   rank: string;
@@ -51,21 +37,28 @@ export function parseDisplayName(displayName: string): {
   firstName: string;
   mi: string;
 } {
-  const commaIdx = displayName.indexOf(",");
-  if (commaIdx > -1) {
-    const beforeComma = displayName.slice(0, commaIdx).trim();
-    const afterComma = displayName.slice(commaIdx + 1).trim();
-    const beforeParts = beforeComma.split(/\s+/);
+  const name = displayName.trim();
 
+  // Try "RANK LAST, First MI" format
+  const commaIdx = name.indexOf(",");
+  if (commaIdx !== -1) {
+    const beforeComma = name.slice(0, commaIdx).trim();
+    const afterComma = name.slice(commaIdx + 1).trim();
+
+    // beforeComma is either "RANK LAST" or just "LAST"
+    const beforeParts = beforeComma.split(/\s+/);
     let rank = "";
     let lastName = "";
+
     if (beforeParts.length >= 2) {
-      rank = beforeParts.slice(0, -1).join(" ");
-      lastName = beforeParts[beforeParts.length - 1] ?? "";
+      // Assume first token is rank if it looks like one (all caps, short)
+      rank = beforeParts[0];
+      lastName = beforeParts.slice(1).join(" ");
     } else {
       lastName = beforeParts[0] ?? "";
     }
 
+    // afterComma is "First MI" or "First"
     const afterParts = afterComma.split(/\s+/);
     const firstName = afterParts[0] ?? "";
     const mi = afterParts[1] ?? "";
@@ -73,12 +66,12 @@ export function parseDisplayName(displayName: string): {
     return { rank, lastName, firstName, mi };
   }
 
-  // No comma — just split words
-  const parts = displayName.trim().split(/\s+/);
+  // Fallback: treat as "First Last" with no rank
+  const parts = name.split(/\s+/);
   return {
     rank: "",
-    lastName: parts[0] ?? "",
-    firstName: parts[1] ?? "",
-    mi: parts[2] ?? "",
+    lastName: parts[parts.length - 1] ?? "",
+    firstName: parts[0] ?? "",
+    mi: "",
   };
 }
