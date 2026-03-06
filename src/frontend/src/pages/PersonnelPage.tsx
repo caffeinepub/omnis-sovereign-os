@@ -55,7 +55,7 @@ import { CLEARANCE_LABELS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { formatDisplayName, parseDisplayName } from "@/lib/utils";
+import { formatDisplayName, parseDisplayName } from "@/lib/displayName";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -719,6 +719,11 @@ function OnboardingQueue({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Deny state
+  const [denyTarget, setDenyTarget] = useState<ExtendedProfile | null>(null);
+  const [denyOpen, setDenyOpen] = useState(false);
+  const [denyReason, setDenyReason] = useState("");
+
   const pendingProfiles = profiles.filter(
     (p) => !p.isValidatedByCommander && !p.isS2Admin,
   );
@@ -727,6 +732,21 @@ function OnboardingQueue({
     mutationFn: async (profile: ExtendedProfile) => {
       if (!actor) throw new Error("Actor not ready");
       await actor.validateS2Admin(profile.principalId);
+      // Send approval notification (non-blocking)
+      try {
+        await actor.createSystemNotification({
+          id: crypto.randomUUID(),
+          title: "Access Approved",
+          body: "Your access request has been approved. You may now log in to Omnis.",
+          userId: profile.principalId,
+          notificationType: "access_request",
+          createdAt: BigInt(Date.now()),
+          read: false,
+          metadata: undefined,
+        });
+      } catch {
+        /* non-blocking */
+      }
     },
     onSuccess: () => {
       toast.success("User verified and activated");
@@ -745,6 +765,48 @@ function OnboardingQueue({
   const handleVerifyClick = (profile: ExtendedProfile) => {
     setConfirmTarget(profile);
     setConfirmOpen(true);
+  };
+
+  const handleDenyClick = (profile: ExtendedProfile) => {
+    setDenyTarget(profile);
+    setDenyReason("");
+    setDenyOpen(true);
+  };
+
+  const handleDenyConfirm = async () => {
+    if (!denyTarget || !denyReason.trim()) return;
+    // Write denial record to localStorage
+    localStorage.setItem(
+      `omnis_denial_${denyTarget.principalId.toString()}`,
+      JSON.stringify({
+        reason: denyReason.trim(),
+        deniedAt: new Date().toISOString(),
+      }),
+    );
+    // Send denial notification (non-blocking)
+    if (actor) {
+      try {
+        await actor.createSystemNotification({
+          id: crypto.randomUUID(),
+          title: "Access Denied",
+          body: `Your access request was denied. Reason: ${denyReason.trim()}. Contact your S2 or security officer.`,
+          userId: denyTarget.principalId,
+          notificationType: "access_request",
+          createdAt: BigInt(Date.now()),
+          read: false,
+          metadata: undefined,
+        });
+      } catch {
+        /* non-blocking */
+      }
+    }
+    void queryClient.invalidateQueries({
+      queryKey: [principalStr, "personnel-profiles"],
+    });
+    toast.success("User denied");
+    setDenyOpen(false);
+    setDenyTarget(null);
+    setDenyReason("");
   };
 
   if (isLoading) {
@@ -783,10 +845,10 @@ function OnboardingQueue({
       >
         {/* Table header */}
         <div
-          className="grid grid-cols-[1fr_auto_1fr_1fr_auto] gap-4 border-b px-4 py-2.5"
+          className="grid grid-cols-[1fr_auto_1fr_1fr_1fr_auto] gap-4 border-b px-4 py-2.5"
           style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
         >
-          {["Name", "Rank", "Email", "Org Role", "Action"].map((col) => (
+          {["Name", "Rank", "Email", "Org Role", "Org", "Action"].map((col) => (
             <span
               key={col}
               className="font-mono text-[9px] uppercase tracking-widest text-slate-600"
@@ -797,43 +859,78 @@ function OnboardingQueue({
         </div>
 
         {/* Rows */}
-        {pendingProfiles.map((profile, idx) => (
-          <div
-            key={profile.principalId.toString()}
-            data-ocid={`personnel.queue.item.${idx + 1}`}
-            className="grid grid-cols-[1fr_auto_1fr_1fr_auto] items-center gap-4 border-b px-4 py-3 transition-colors last:border-0 hover:bg-white/[0.02]"
-            style={{ borderColor: "#1a2235" }}
-          >
-            <span className="truncate font-mono text-xs text-white">
-              {profile.name || "—"}
-            </span>
-            <span className="whitespace-nowrap font-mono text-[11px] text-slate-400">
-              {profile.rank || "—"}
-            </span>
-            <span className="truncate font-mono text-[11px] text-slate-500">
-              {profile.email || "—"}
-            </span>
-            <span className="truncate font-mono text-[11px] text-slate-500">
-              {profile.orgRole || "—"}
-            </span>
-            <button
-              type="button"
-              data-ocid={`personnel.queue.verify_button.${idx + 1}`}
-              onClick={() => handleVerifyClick(profile)}
-              disabled={verifyMutation.isPending}
-              className="shrink-0 rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-all hover:bg-amber-500/10 disabled:opacity-40"
-              style={{
-                borderColor: "rgba(245,158,11,0.4)",
-                color: "#f59e0b",
-              }}
+        {pendingProfiles.map((profile, idx) => {
+          // Read org request from localStorage
+          let orgName = "—";
+          try {
+            const raw = localStorage.getItem(
+              `omnis_org_request_${profile.principalId.toString()}`,
+            );
+            if (raw) {
+              const parsed = JSON.parse(raw) as { workspace?: string };
+              if (parsed.workspace) orgName = parsed.workspace;
+            }
+          } catch {
+            /* ignore */
+          }
+
+          return (
+            <div
+              key={profile.principalId.toString()}
+              data-ocid={`personnel.queue.item.${idx + 1}`}
+              className="grid grid-cols-[1fr_auto_1fr_1fr_1fr_auto] items-center gap-4 border-b px-4 py-3 transition-colors last:border-0 hover:bg-white/[0.02]"
+              style={{ borderColor: "#1a2235" }}
             >
-              Verify & Activate
-            </button>
-          </div>
-        ))}
+              <span className="truncate font-mono text-xs text-white">
+                {profile.name || "—"}
+              </span>
+              <span className="whitespace-nowrap font-mono text-[11px] text-slate-400">
+                {profile.rank || "—"}
+              </span>
+              <span className="truncate font-mono text-[11px] text-slate-500">
+                {profile.email || "—"}
+              </span>
+              <span className="truncate font-mono text-[11px] text-slate-500">
+                {profile.orgRole || "—"}
+              </span>
+              <span className="truncate font-mono text-[11px] text-slate-500">
+                {orgName}
+              </span>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-ocid={`personnel.queue.verify_button.${idx + 1}`}
+                  onClick={() => handleVerifyClick(profile)}
+                  disabled={verifyMutation.isPending}
+                  className="shrink-0 rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-all hover:bg-amber-500/10 disabled:opacity-40"
+                  style={{
+                    borderColor: "rgba(245,158,11,0.4)",
+                    color: "#f59e0b",
+                  }}
+                >
+                  Verify & Activate
+                </button>
+                <button
+                  type="button"
+                  data-ocid={`personnel.queue.deny_button.${idx + 1}`}
+                  onClick={() => handleDenyClick(profile)}
+                  disabled={verifyMutation.isPending}
+                  className="shrink-0 rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-all hover:bg-red-500/10 disabled:opacity-40"
+                  style={{
+                    borderColor: "rgba(239,68,68,0.3)",
+                    color: "#f87171",
+                  }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Confirm dialog */}
+      {/* Approve confirm dialog */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent
           style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
@@ -877,6 +974,65 @@ function OnboardingQueue({
               ) : (
                 "Confirm"
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deny confirm dialog */}
+      <AlertDialog open={denyOpen} onOpenChange={setDenyOpen}>
+        <AlertDialogContent
+          data-ocid="personnel.deny_dialog.dialog"
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
+              Deny Access
+            </AlertDialogTitle>
+            <AlertDialogDescription className="font-mono text-xs leading-relaxed text-slate-400">
+              Deny access for{" "}
+              <span className="font-semibold text-red-400">
+                {denyTarget?.name}
+              </span>
+              ? This will notify the user and record the reason.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="px-1 py-2">
+            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+              Reason for Denial <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              data-ocid="personnel.deny_dialog.reason.input"
+              value={denyReason}
+              onChange={(e) => setDenyReason(e.target.value)}
+              placeholder="Enter reason..."
+              className="border font-mono text-xs text-white placeholder:text-slate-600"
+              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
+            />
+          </div>
+
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel
+              data-ocid="personnel.deny_dialog.cancel_button"
+              className="border font-mono text-xs uppercase tracking-wider text-slate-300"
+              style={{ borderColor: "#2a3347", backgroundColor: "transparent" }}
+              onClick={() => {
+                setDenyOpen(false);
+                setDenyTarget(null);
+                setDenyReason("");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="personnel.deny_dialog.confirm_button"
+              onClick={() => void handleDenyConfirm()}
+              disabled={!denyReason.trim()}
+              className="font-mono text-xs uppercase tracking-wider disabled:opacity-40"
+              style={{ backgroundColor: "rgba(239,68,68,0.85)", color: "#fff" }}
+            >
+              Confirm Deny
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

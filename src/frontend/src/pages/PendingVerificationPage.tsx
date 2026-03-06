@@ -1,12 +1,42 @@
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { ShieldAlert } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ShieldAlert, ShieldX } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface DenialRecord {
+  reason: string;
+  deniedAt: string;
+}
 
 export default function PendingVerificationPage() {
-  const { clear } = useInternetIdentity();
+  const { clear, identity } = useInternetIdentity();
+  const navigate = useNavigate();
+  const principalStr = identity?.getPrincipal().toString();
+
+  const [denialRecord, setDenialRecord] = useState<DenialRecord | null>(null);
+
+  useEffect(() => {
+    if (!principalStr) return;
+    const raw = localStorage.getItem(`omnis_denial_${principalStr}`);
+    if (raw) {
+      try {
+        setDenialRecord(JSON.parse(raw) as DenialRecord);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [principalStr]);
 
   const handleSignOut = () => {
     clear();
     window.location.href = "/login";
+  };
+
+  const handleRequestReview = () => {
+    if (principalStr) {
+      localStorage.removeItem(`omnis_denial_${principalStr}`);
+    }
+    void navigate({ to: "/onboarding" });
   };
 
   return (
@@ -26,68 +56,163 @@ export default function PendingVerificationPage() {
 
       {/* Content */}
       <div className="relative z-10 flex max-w-md flex-col items-center gap-8">
-        {/* Icon */}
-        <div
-          className="flex h-20 w-20 items-center justify-center rounded-full border shadow-[0_0_40px_oklch(0.72_0.175_70_/_0.25)]"
-          style={{
-            backgroundColor: "rgba(245, 158, 11, 0.08)",
-            borderColor: "rgba(245, 158, 11, 0.35)",
-          }}
-        >
-          <ShieldAlert className="h-10 w-10" style={{ color: "#f59e0b" }} />
-        </div>
+        {denialRecord ? (
+          /* ── Denied state ─────────────────────────────────────── */
+          <>
+            {/* Icon */}
+            <div
+              className="flex h-20 w-20 items-center justify-center rounded-full border shadow-[0_0_40px_rgba(239,68,68,0.2)]"
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.08)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
+              }}
+            >
+              <ShieldX className="h-10 w-10 text-red-400" />
+            </div>
 
-        {/* Heading */}
-        <div className="flex flex-col items-center gap-3">
-          <h1
-            className="font-mono text-2xl font-bold uppercase tracking-widest"
-            style={{ color: "#f0f4ff" }}
-          >
-            PENDING VERIFICATION
-          </h1>
-          <p className="font-mono text-sm text-slate-400">
-            Your access is pending S2 verification.
-          </p>
-        </div>
+            {/* Heading */}
+            <div className="flex flex-col items-center gap-3">
+              <h1 className="font-mono text-2xl font-bold uppercase tracking-widest text-red-400">
+                ACCESS DENIED
+              </h1>
+              <p className="font-mono text-sm text-slate-400">
+                Your access request was denied.
+              </p>
+            </div>
 
-        {/* Divider */}
-        <div className="flex w-64 items-center gap-3">
-          <div className="h-px flex-1" style={{ backgroundColor: "#1a2235" }} />
-          <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
-            HOLD
-          </span>
-          <div className="h-px flex-1" style={{ backgroundColor: "#1a2235" }} />
-        </div>
+            {/* Divider */}
+            <div className="flex w-64 items-center gap-3">
+              <div
+                className="h-px flex-1"
+                style={{ backgroundColor: "#1a2235" }}
+              />
+              <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
+                DENIED
+              </span>
+              <div
+                className="h-px flex-1"
+                style={{ backgroundColor: "#1a2235" }}
+              />
+            </div>
 
-        {/* Body */}
-        <p className="max-w-sm font-mono text-xs leading-relaxed text-slate-500">
-          You will be notified when your account is activated. If you believe
-          this is an error, contact your S2 or security officer.
-        </p>
+            {/* Reason panel */}
+            <div
+              className="w-full rounded border px-4 py-4 text-left"
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.08)",
+                borderColor: "rgba(239, 68, 68, 0.3)",
+              }}
+            >
+              <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-red-400/70">
+                Reason
+              </p>
+              <p className="font-mono text-xs leading-relaxed text-slate-300">
+                {denialRecord.reason}
+              </p>
+            </div>
 
-        {/* Status indicator */}
-        <div
-          className="flex w-full items-center gap-3 rounded border px-4 py-3"
-          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
-        >
-          <span
-            className="h-2 w-2 animate-pulse rounded-full"
-            style={{ backgroundColor: "#f59e0b" }}
-          />
-          <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-            Awaiting S2 approval
-          </span>
-        </div>
+            {/* Instruction */}
+            <p className="max-w-sm font-mono text-xs leading-relaxed text-slate-500">
+              Contact your S2 or security officer to appeal this decision.
+            </p>
 
-        {/* Sign out */}
-        <button
-          type="button"
-          data-ocid="pending.sign_out_button"
-          onClick={handleSignOut}
-          className="font-mono text-xs uppercase tracking-widest text-slate-600 underline-offset-4 transition-colors hover:text-slate-400 hover:underline"
-        >
-          Sign Out
-        </button>
+            {/* Request Review button */}
+            <button
+              type="button"
+              data-ocid="pending.request_review_button"
+              onClick={handleRequestReview}
+              className="rounded border px-5 py-2.5 font-mono text-xs uppercase tracking-wider transition-all hover:bg-amber-500/10"
+              style={{
+                borderColor: "rgba(245,158,11,0.4)",
+                color: "#f59e0b",
+              }}
+            >
+              Request Review
+            </button>
+
+            {/* Sign out */}
+            <button
+              type="button"
+              data-ocid="pending.sign_out_button"
+              onClick={handleSignOut}
+              className="font-mono text-xs uppercase tracking-widest text-slate-600 underline-offset-4 transition-colors hover:text-slate-400 hover:underline"
+            >
+              Sign Out
+            </button>
+          </>
+        ) : (
+          /* ── Pending state ────────────────────────────────────── */
+          <>
+            {/* Icon */}
+            <div
+              className="flex h-20 w-20 items-center justify-center rounded-full border shadow-[0_0_40px_oklch(0.72_0.175_70_/_0.25)]"
+              style={{
+                backgroundColor: "rgba(245, 158, 11, 0.08)",
+                borderColor: "rgba(245, 158, 11, 0.35)",
+              }}
+            >
+              <ShieldAlert className="h-10 w-10" style={{ color: "#f59e0b" }} />
+            </div>
+
+            {/* Heading */}
+            <div className="flex flex-col items-center gap-3">
+              <h1
+                className="font-mono text-2xl font-bold uppercase tracking-widest"
+                style={{ color: "#f0f4ff" }}
+              >
+                PENDING VERIFICATION
+              </h1>
+              <p className="font-mono text-sm text-slate-400">
+                Your access is pending S2 verification.
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="flex w-64 items-center gap-3">
+              <div
+                className="h-px flex-1"
+                style={{ backgroundColor: "#1a2235" }}
+              />
+              <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
+                HOLD
+              </span>
+              <div
+                className="h-px flex-1"
+                style={{ backgroundColor: "#1a2235" }}
+              />
+            </div>
+
+            {/* Body */}
+            <p className="max-w-sm font-mono text-xs leading-relaxed text-slate-500">
+              You will be notified when your account is activated. If you
+              believe this is an error, contact your S2 or security officer.
+            </p>
+
+            {/* Status indicator */}
+            <div
+              className="flex w-full items-center gap-3 rounded border px-4 py-3"
+              style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+            >
+              <span
+                className="h-2 w-2 animate-pulse rounded-full"
+                style={{ backgroundColor: "#f59e0b" }}
+              />
+              <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                Awaiting S2 approval
+              </span>
+            </div>
+
+            {/* Sign out */}
+            <button
+              type="button"
+              data-ocid="pending.sign_out_button"
+              onClick={handleSignOut}
+              className="font-mono text-xs uppercase tracking-widest text-slate-600 underline-offset-4 transition-colors hover:text-slate-400 hover:underline"
+            >
+              Sign Out
+            </button>
+          </>
+        )}
       </div>
 
       {/* Bottom line */}

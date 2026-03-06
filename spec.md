@@ -2,49 +2,46 @@
 
 ## Current State
 
-- Registration form has a single "Full Name" text input (placeholder: "SMITH, John A") and a branch → rank cascading dropdown.
-- Rank dropdown shows ALL ranks for a branch in one flat list (25+ items for Army).
-- PersonnelPage EditModal has a single "Name" text input for the profile name field and a single "Rank" text input.
-- Name is stored/displayed as a single concatenated string (e.g. "SGT SMITH, John A").
-- Branch rank data (`BRANCH_RANKS`) is defined only in RegistrationGatePage.tsx.
+The onboarding flow is complete: new users register, complete the 3-step onboarding wizard (org selection), and land on the pending verification page. The PersonnelPage has an "Onboarding Queue" tab (S2 only) that lists users with `isValidatedByCommander = false && !isS2Admin` and shows a "Verify & Activate" button that calls `validateS2Admin`. However, this workflow has a critical gap:
+
+- The S2 **cannot deny** a user — only approve
+- There is **no deny flow with a reason**
+- There is **no in-app notification to the user** upon approval or denial
+- The pending user has **no way to know their status changed** except by refreshing
+- S2 has **no way to see what organization a user requested** — the request is stored in localStorage only, not surfaced in the queue
 
 ## Requested Changes (Diff)
 
 ### Add
-- `BRANCH_RANK_CATEGORIES` data structure in constants.ts: maps each branch to categories (Enlisted, Officer, Warrant Officer where applicable), and each category to its rank list.
-- Three separate name inputs everywhere a name is entered: Last Name, First Name, Middle Initial (max 1 char).
-- Category dropdown between Branch and Rank dropdowns: filters rank list by selected category.
-- Auto-format utility: given `{ rank, lastName, firstName, mi }` produces `RANK LAST, First MI` (e.g. `SGT SMITH, John A`). MI is omitted if blank.
-- Display name auto-formatted on: profile cards (PersonnelPage), TopNav display name, email directory, onboarding page.
+- Deny action with a reason input on each queue row (alongside "Verify & Activate")
+- Deny confirmation dialog: reason text input (required), confirm deny button
+- On approval: create an in-app notification to the approved user (via `createSystemNotification`) confirming activation
+- On denial: create an in-app notification to the denied user explaining they were denied and why, with instruction to contact their S2
+- "Requested Org" column in the onboarding queue table, sourced from `localStorage` (`omnis_org_request_<principalId>`)
+- Visual status badges on queue rows: "Pending" (amber pulse), differentiated from future "Denied" state
+- Denial creates a localStorage record (`omnis_denial_<principalId>`) so PendingVerificationPage can detect and show denial messaging
 
 ### Modify
-- RegistrationGatePage.tsx:
-  - Replace single "Full Name" input with three inputs: Last Name, First Name, Middle Initial.
-  - Replace flat rank dropdown with three-dropdown flow: Branch → Category → Rank.
-  - Concatenate name on submit using format utility before passing to `registerProfile`.
-- PersonnelPage.tsx EditModal:
-  - Replace single "Name" input with three split inputs: Last Name, First Name, MI.
-  - Replace single "Rank" text input with three-dropdown flow: Branch → Category → Rank (same component).
-  - On save, concatenate name using format utility.
-  - LockedField for name shows the formatted display name (single read-only field).
-- constants.ts: add `BRANCH_RANK_CATEGORIES` export replacing the inline `BRANCH_RANKS` in RegistrationGatePage.
+- `OnboardingQueue` component: add Deny button + requested org column + notification calls on both approve and deny
+- `PendingVerificationPage`: check for denial record in localStorage; if present, show a distinct "Access Denied" state with the denial reason and instruction to contact S2
+- Queue table column layout: expand from 5 columns to 6 (add Org Request)
 
 ### Remove
-- Inline `BRANCH_RANKS` constant from RegistrationGatePage.tsx (moved to constants.ts as part of `BRANCH_RANK_CATEGORIES`).
+- Nothing removed
 
 ## Implementation Plan
 
-1. Add `BRANCH_RANK_CATEGORIES` to `constants.ts` — structure: `Record<branch, Record<category, string[]>>`. Derive flat `BRANCH_RANKS` from it for backward compat if needed.
-2. Create shared `RankSelector` component (`src/frontend/src/components/shared/RankSelector.tsx`) — three Select dropdowns: Branch, Category, Rank. Props: `branch`, `category`, `rank`, onChange handlers for each, disabled state.
-3. Create `formatDisplayName(rank, lastName, firstName, mi)` utility in `lib/utils.ts` — returns `RANK LAST, First MI` string.
-4. Update `RegistrationGatePage.tsx`:
-   - Replace single name input with Last/First/MI inputs.
-   - Use `RankSelector` component.
-   - On submit, format name via utility before API call.
-5. Update `PersonnelPage.tsx` EditModal:
-   - Split name state into `lastName`, `firstName`, `mi`.
-   - Parse existing `profile.name` back into parts on modal open (best-effort split on comma and space).
-   - Use `RankSelector` for rank editing (S2 admin always can edit).
-   - On save, format name via utility.
-   - LockedField renders formatted display name.
-6. Validate: typecheck, lint, build.
+1. Update `OnboardingQueue` in `PersonnelPage.tsx`:
+   - Add "Org Request" column reading from `localStorage`
+   - Add "Deny" button per row (red-tinted, beside Verify & Activate)
+   - Add deny confirmation dialog with reason `<Input>` (required before confirming)
+   - On verify: after `validateS2Admin`, call `createSystemNotification` to the approved user with type "access_request", title "Access Approved", body confirming activation
+   - On deny: write denial record to localStorage, call `createSystemNotification` to the denied user with title "Access Denied" and the reason
+   - Invalidate query after deny same as after verify
+
+2. Update `PendingVerificationPage.tsx`:
+   - On mount, check `localStorage` for `omnis_denial_<principalId>`
+   - If found: show "Access Denied" state with reason text and "Contact your S2 or security officer" instruction; show a "Request Review" button that clears the denial record and returns to onboarding
+   - If not found: show existing "Pending Verification" state (unchanged)
+
+3. Add `data-ocid` markers to all new interactive surfaces (deny button, deny dialog, reason input, confirm/cancel, request review button)
