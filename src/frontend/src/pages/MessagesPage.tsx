@@ -173,9 +173,11 @@ function ComposeModal({
     }
   }
 
-  // Filter out self from recipient list
+  // Filter out self and unregistered users from recipient list
   const recipientOptions = profiles.filter(
-    (p) => p.principalId.toString() !== callerPrincipal.toString(),
+    (p) =>
+      p.principalId.toString() !== callerPrincipal.toString() &&
+      p.registered === true,
   );
 
   return (
@@ -603,8 +605,9 @@ function ThreadView({
               value={replyBody}
               onChange={(e) => {
                 setReplyBody(e.target.value);
-                if (e.target.value.trim()) setReplyError("");
+                setReplyError("");
               }}
+              onFocus={() => setReplyError("")}
               className="min-h-[72px] border font-mono text-xs text-white"
               style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
               placeholder="Type a reply…"

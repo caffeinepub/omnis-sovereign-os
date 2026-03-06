@@ -492,6 +492,8 @@ export default function FileStoragePage() {
 
   // Guard to prevent duplicate vault initialization calls
   const initializingRef = useRef(false);
+  // Extra guard to prevent vault creation firing more than once (Strict Mode double-invoke)
+  const isCreatingVaultRef = useRef(false);
 
   const currentPrincipal = identity?.getPrincipal().toString() ?? "";
   const uploaderName = profile
@@ -513,56 +515,68 @@ export default function FileStoragePage() {
       );
 
       if (!vaultFolder) {
-        // Find or create the vault section
-        const allSections = await actor.getSections();
-        let vaultSection = allSections.find(
-          (s: Section) => s.name === VAULT_SECTION_NAME,
-        );
+        // Guard against concurrent vault creation (e.g., React Strict Mode double-invoke)
+        if (isCreatingVaultRef.current) return;
+        isCreatingVaultRef.current = true;
 
-        if (!vaultSection) {
+        try {
+          // Find or create the vault section
+          const allSections = await actor.getSections();
+          let vaultSection = allSections.find(
+            (s: Section) => s.name === VAULT_SECTION_NAME,
+          );
+
+          if (!vaultSection) {
+            const callerPrincipal = identity?.getPrincipal();
+            if (!callerPrincipal) throw new Error("No identity available");
+
+            const newSectionId = await actor.createSection({
+              id: "",
+              name: VAULT_SECTION_NAME,
+              description: "Internal file vault section",
+              createdBy: callerPrincipal,
+              createdAt: BigInt(Date.now()),
+              iconName: "HardDrive",
+              parentSectionId: undefined,
+            });
+
+            // Fetch again to get the real section
+            const sections = await actor.getSections();
+            vaultSection = sections.find(
+              (s: Section) =>
+                s.id === newSectionId || s.name === VAULT_SECTION_NAME,
+            );
+            if (!vaultSection)
+              throw new Error("Failed to create vault section");
+          }
+
           const callerPrincipal = identity?.getPrincipal();
           if (!callerPrincipal) throw new Error("No identity available");
 
-          const newSectionId = await actor.createSection({
+          const newFolderId = await actor.createFolder({
             id: "",
-            name: VAULT_SECTION_NAME,
-            description: "Internal file vault section",
+            sectionId: vaultSection.id,
+            name: VAULT_FOLDER_NAME,
+            description: "Secure file vault",
+            isPersonal: false,
+            assignedUserId: undefined,
+            requiredClearanceLevel: 0n,
             createdBy: callerPrincipal,
             createdAt: BigInt(Date.now()),
-            iconName: "HardDrive",
-            parentSectionId: undefined,
           });
 
-          // Fetch again to get the real section
-          const sections = await actor.getSections();
-          vaultSection = sections.find(
-            (s: Section) =>
-              s.id === newSectionId || s.name === VAULT_SECTION_NAME,
+          // Fetch folders again to get the real folder
+          const refreshedFolders = await actor.getAllFolders();
+          vaultFolder = refreshedFolders.find(
+            (f: Folder) => f.id === newFolderId || f.name === VAULT_FOLDER_NAME,
           );
-          if (!vaultSection) throw new Error("Failed to create vault section");
+          if (!vaultFolder) throw new Error("Failed to create vault folder");
+        } catch (creationErr) {
+          isCreatingVaultRef.current = false;
+          throw creationErr;
         }
 
-        const callerPrincipal = identity?.getPrincipal();
-        if (!callerPrincipal) throw new Error("No identity available");
-
-        const newFolderId = await actor.createFolder({
-          id: "",
-          sectionId: vaultSection.id,
-          name: VAULT_FOLDER_NAME,
-          description: "Secure file vault",
-          isPersonal: false,
-          assignedUserId: undefined,
-          requiredClearanceLevel: 0n,
-          createdBy: callerPrincipal,
-          createdAt: BigInt(Date.now()),
-        });
-
-        // Fetch folders again to get the real folder
-        const refreshedFolders = await actor.getAllFolders();
-        vaultFolder = refreshedFolders.find(
-          (f: Folder) => f.id === newFolderId || f.name === VAULT_FOLDER_NAME,
-        );
-        if (!vaultFolder) throw new Error("Failed to create vault folder");
+        isCreatingVaultRef.current = false;
       }
 
       const folderId = vaultFolder.id;

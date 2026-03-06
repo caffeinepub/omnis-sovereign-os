@@ -25,7 +25,7 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Bell,
@@ -330,8 +330,17 @@ export function TopNav() {
   const { clear, identity } = useInternetIdentity();
   const { actor, isFetching } = useActor();
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+
+  const currentPath = router.state.location.pathname;
+
+  // Returns true if the current path starts with or exactly matches the given route
+  function isActivePath(to: string): boolean {
+    if (to === "/") return currentPath === "/";
+    return currentPath === to || currentPath.startsWith(`${to}/`);
+  }
 
   const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
@@ -439,13 +448,17 @@ export function TopNav() {
   const unreadMsgCount = recentInboxMessages.filter((m) => !m.read).length;
 
   const initials = profile?.name ? getInitials(profile.name) : "??";
-  const displayName = profile
-    ? `${profile.rank} ${profile.name}`.trim() || "Unknown"
-    : "Unknown";
+  // profile.name is already formatted as "RANK LAST, First MI" — use it directly
+  const displayName = profile?.name?.trim() || "Unknown";
 
   const navLinks = [
     { label: "Documents", to: "/documents", ocid: "topnav.documents.link" },
     { label: "Messaging", to: "/messages", ocid: "topnav.messages.link" },
+    {
+      label: "File Storage",
+      to: "/file-storage",
+      ocid: "topnav.file_storage.link",
+    },
     {
       label: "Personnel Directory",
       to: "/personnel",
@@ -456,11 +469,6 @@ export function TopNav() {
       to: "/email-directory",
       ocid: "topnav.email_directory.link",
     },
-    {
-      label: "File Storage",
-      to: "/file-storage",
-      ocid: "topnav.file_storage.link",
-    },
     ...(isS2Admin
       ? [
           {
@@ -470,6 +478,25 @@ export function TopNav() {
           },
         ]
       : []),
+  ] as const;
+
+  const secondaryNavLinks = [
+    {
+      label: "Notifications",
+      to: "/notifications",
+      ocid: "topnav.notifications.link",
+    },
+    { label: "Audit Log", to: "/audit-log", ocid: "topnav.audit_log.link" },
+    {
+      label: "Announcements",
+      to: "/announcements",
+      ocid: "topnav.announcements.link",
+    },
+    { label: "Calendar", to: "/calendar", ocid: "topnav.calendar.link" },
+    { label: "Tasks", to: "/tasks", ocid: "topnav.tasks.link" },
+    { label: "Settings", to: "/settings", ocid: "topnav.settings.link" },
+    { label: "Governance", to: "/governance", ocid: "topnav.governance.link" },
+    { label: "Help", to: "/help", ocid: "topnav.help.link" },
   ] as const;
 
   return (
@@ -521,16 +548,49 @@ export function TopNav() {
                 borderColor: "#1a2235",
               }}
             >
-              {navLinks.map((link) => (
-                <DropdownMenuItem
-                  key={link.to}
-                  data-ocid={link.ocid}
-                  className="cursor-pointer font-mono text-xs uppercase tracking-widest text-slate-300 hover:text-white focus:text-white"
-                  onClick={() => void navigate({ to: link.to })}
-                >
-                  {link.label}
-                </DropdownMenuItem>
-              ))}
+              {navLinks.map((link) => {
+                const active = isActivePath(link.to);
+                return (
+                  <DropdownMenuItem
+                    key={link.to}
+                    data-ocid={link.ocid}
+                    className="cursor-pointer font-mono text-xs uppercase tracking-widest hover:text-white focus:text-white"
+                    style={{ color: active ? "#f59e0b" : "#cbd5e1" }}
+                    onClick={() => void navigate({ to: link.to })}
+                  >
+                    {active && (
+                      <span
+                        className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: "#f59e0b" }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {link.label}
+                  </DropdownMenuItem>
+                );
+              })}
+              <DropdownMenuSeparator style={{ backgroundColor: "#1a2235" }} />
+              {secondaryNavLinks.map((link) => {
+                const active = isActivePath(link.to);
+                return (
+                  <DropdownMenuItem
+                    key={link.to}
+                    data-ocid={link.ocid}
+                    className="cursor-pointer font-mono text-[10px] uppercase tracking-widest hover:text-slate-300 focus:text-slate-300"
+                    style={{ color: active ? "#f59e0b" : "#64748b" }}
+                    onClick={() => void navigate({ to: link.to })}
+                  >
+                    {active && (
+                      <span
+                        className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: "#f59e0b" }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {link.label}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

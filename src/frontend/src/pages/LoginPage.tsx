@@ -47,6 +47,8 @@ export default function LoginPage() {
         hasNavigated.current = true;
         if (!profile || !profile.registered) {
           void navigate({ to: "/register" });
+        } else if (!profile.isValidatedByCommander && !profile.isS2Admin) {
+          void navigate({ to: "/pending" });
         } else {
           void navigate({ to: "/" });
         }

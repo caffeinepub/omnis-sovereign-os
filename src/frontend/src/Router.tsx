@@ -30,6 +30,18 @@ const PersonnelPage = lazy(() => import("@/pages/PersonnelPage"));
 const EmailDirectoryPage = lazy(() => import("@/pages/EmailDirectoryPage"));
 const FileStoragePage = lazy(() => import("@/pages/FileStoragePage"));
 const AccessMonitoringPage = lazy(() => import("@/pages/AccessMonitoringPage"));
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
+const AuditLogPage = lazy(() => import("@/pages/AuditLogPage"));
+const AnnouncementsPage = lazy(() => import("@/pages/AnnouncementsPage"));
+const CalendarPage = lazy(() => import("@/pages/CalendarPage"));
+const TasksPage = lazy(() => import("@/pages/TasksPage"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const GovernancePage = lazy(() => import("@/pages/GovernancePage"));
+const HelpPage = lazy(() => import("@/pages/HelpPage"));
+const OnboardingPage = lazy(() => import("@/pages/OnboardingPage"));
+const PendingVerificationPage = lazy(
+  () => import("@/pages/PendingVerificationPage"),
+);
 
 // --- Page loader ---
 function PageLoader() {
@@ -233,6 +245,106 @@ const monitoringRoute = createRoute({
   ),
 });
 
+const notificationsRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/notifications",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <NotificationsPage />
+    </Suspense>
+  ),
+});
+
+const auditLogRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/audit-log",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <AuditLogPage />
+    </Suspense>
+  ),
+});
+
+const announcementsRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/announcements",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <AnnouncementsPage />
+    </Suspense>
+  ),
+});
+
+const calendarRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/calendar",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <CalendarPage />
+    </Suspense>
+  ),
+});
+
+const tasksRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/tasks",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <TasksPage />
+    </Suspense>
+  ),
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/settings",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <SettingsPage />
+    </Suspense>
+  ),
+});
+
+const governanceRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/governance",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <GovernancePage />
+    </Suspense>
+  ),
+});
+
+const helpRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/help",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <HelpPage />
+    </Suspense>
+  ),
+});
+
+const onboardingRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/onboarding",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <OnboardingPage />
+    </Suspense>
+  ),
+});
+
+const pendingRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/pending",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <PendingVerificationPage />
+    </Suspense>
+  ),
+});
+
 // --- Route tree ---
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -246,6 +358,16 @@ const routeTree = rootRoute.addChildren([
     emailDirectoryRoute,
     fileStorageRoute,
     monitoringRoute,
+    notificationsRoute,
+    auditLogRoute,
+    announcementsRoute,
+    calendarRoute,
+    tasksRoute,
+    settingsRoute,
+    governanceRoute,
+    helpRoute,
+    onboardingRoute,
+    pendingRoute,
   ]),
 ]);
 

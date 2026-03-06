@@ -1,11 +1,13 @@
 import { UserRole } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
+import { RankSelector } from "@/components/shared/RankSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { formatDisplayName } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -16,8 +18,12 @@ export default function RegistrationGatePage() {
   const { refreshProfile } = usePermissions();
   const navigate = useNavigate();
 
+  const [branch, setBranch] = useState("");
+  const [category, setCategory] = useState("");
   const [form, setForm] = useState({
-    name: "",
+    lastName: "",
+    firstName: "",
+    mi: "",
     rank: "",
     email: "",
     orgRole: "",
@@ -31,6 +37,14 @@ export default function RegistrationGatePage() {
     setError("");
   };
 
+  // Live preview of formatted name
+  const namePreview = formatDisplayName(
+    form.rank,
+    form.lastName,
+    form.firstName,
+    form.mi,
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!actor || !identity) {
@@ -39,12 +53,15 @@ export default function RegistrationGatePage() {
     }
 
     if (
-      !form.name.trim() ||
+      !form.lastName.trim() ||
+      !form.firstName.trim() ||
       !form.rank.trim() ||
       !form.email.trim() ||
       !form.orgRole.trim()
     ) {
-      setError("All fields except Bootstrap Code are required.");
+      setError(
+        "Last name, first name, rank, email, and organizational role are required.",
+      );
       return;
     }
 
@@ -53,11 +70,17 @@ export default function RegistrationGatePage() {
 
     try {
       const principal = identity.getPrincipal();
+      const formattedName = formatDisplayName(
+        form.rank,
+        form.lastName,
+        form.firstName,
+        form.mi,
+      );
 
       // Register profile with standard user defaults
       await actor.registerProfile({
         principalId: principal,
-        name: form.name.trim(),
+        name: formattedName,
         rank: form.rank.trim(),
         email: form.email.trim(),
         orgRole: form.orgRole.trim(),
@@ -77,7 +100,7 @@ export default function RegistrationGatePage() {
           // Step 2: Update profile to set isS2Admin = true now that we have admin rights
           await actor.updateUserProfile({
             principalId: principal,
-            name: form.name.trim(),
+            name: formattedName,
             rank: form.rank.trim(),
             email: form.email.trim(),
             orgRole: form.orgRole.trim(),
@@ -91,13 +114,13 @@ export default function RegistrationGatePage() {
           // Step 3: Mark as validated by commander
           await actor.validateS2Admin(principal);
         } catch {
-          // Bootstrap code was wrong or already used — continue as regular user
+          // Authorization code was wrong or already used — continue as regular user
           // Profile is already registered; just proceed normally
         }
       }
 
       await refreshProfile();
-      void navigate({ to: "/" });
+      void navigate({ to: "/onboarding" });
     } catch (err) {
       const msg =
         err instanceof Error
@@ -125,6 +148,16 @@ export default function RegistrationGatePage() {
       />
 
       <div className="relative z-10 w-full max-w-md">
+        {/* Step indicator */}
+        <div className="mb-5 flex justify-center">
+          <span
+            className="font-mono text-[10px] uppercase tracking-wider"
+            style={{ color: "#f59e0b" }}
+          >
+            Step 1 of 3: Complete Profile
+          </span>
+        </div>
+
         {/* Header */}
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full border border-amber bg-navy shadow-[0_0_30px_oklch(0.72_0.175_70_/_0.2)]">
@@ -140,46 +173,86 @@ export default function RegistrationGatePage() {
 
         {/* Form card */}
         <form
-          onSubmit={handleSubmit}
+          onSubmit={(e) => void handleSubmit(e)}
           className="rounded-lg border border-border bg-card p-6 shadow-2xl"
         >
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="reg-name"
-                className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
-              >
-                Full Name
+            {/* Name fields — three separate inputs */}
+            <div className="space-y-3">
+              <Label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Name
               </Label>
-              <Input
-                id="reg-name"
-                data-ocid="registration.name.input"
-                type="text"
-                value={form.name}
-                onChange={(e) => handleChange("name", e.target.value)}
-                placeholder="John Smith"
-                className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
-                autoComplete="name"
-              />
+              <div className="grid grid-cols-[1fr_1fr_64px] gap-2">
+                <div className="space-y-1">
+                  <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    Last
+                  </Label>
+                  <Input
+                    data-ocid="registration.last_name.input"
+                    value={form.lastName}
+                    onChange={(e) => handleChange("lastName", e.target.value)}
+                    placeholder="SMITH"
+                    className="border-input bg-secondary font-mono text-sm uppercase text-foreground placeholder:text-muted-foreground/50 focus:border-primary"
+                    autoComplete="family-name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    First
+                  </Label>
+                  <Input
+                    data-ocid="registration.first_name.input"
+                    value={form.firstName}
+                    onChange={(e) => handleChange("firstName", e.target.value)}
+                    placeholder="John"
+                    className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary"
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    MI
+                  </Label>
+                  <Input
+                    data-ocid="registration.mi.input"
+                    value={form.mi}
+                    onChange={(e) =>
+                      handleChange("mi", e.target.value.slice(0, 1))
+                    }
+                    placeholder="A"
+                    maxLength={1}
+                    className="border-input bg-secondary font-mono text-sm text-center uppercase text-foreground placeholder:text-muted-foreground/50 focus:border-primary"
+                    autoComplete="additional-name"
+                  />
+                </div>
+              </div>
+              {/* Live name preview */}
+              <p className="font-mono text-[10px] text-muted-foreground/50">
+                Will display as:{" "}
+                <span className="text-muted-foreground">
+                  {namePreview ||
+                    `${form.rank || "RANK"} ${form.lastName.toUpperCase() || "LAST"}, ${form.firstName || "First"}${form.mi ? ` ${form.mi.toUpperCase()}` : ""}`}
+                </span>
+              </p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="reg-rank"
-                className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
-              >
-                Rank / Title
-              </Label>
-              <Input
-                id="reg-rank"
-                data-ocid="registration.rank.input"
-                type="text"
-                value={form.rank}
-                onChange={(e) => handleChange("rank", e.target.value)}
-                placeholder="Colonel"
-                className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
-              />
-            </div>
+            {/* Branch / Category / Rank selector */}
+            <RankSelector
+              branch={branch}
+              category={category}
+              rank={form.rank}
+              onBranchChange={(v) => {
+                setBranch(v);
+                setCategory("");
+                handleChange("rank", "");
+              }}
+              onCategoryChange={(v) => {
+                setCategory(v);
+                handleChange("rank", "");
+              }}
+              onRankChange={(v) => handleChange("rank", v)}
+              variant="registration"
+            />
 
             <div className="space-y-1.5">
               <Label
@@ -218,13 +291,13 @@ export default function RegistrationGatePage() {
               />
             </div>
 
-            {/* Admin Bootstrap Code — always shown */}
+            {/* Commander Authorization Code — always shown */}
             <div className="space-y-1.5 border-t border-border pt-4">
               <Label
                 htmlFor="reg-bootstrap"
                 className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
               >
-                Admin Bootstrap Code{" "}
+                Commander Authorization Code{" "}
                 <span className="text-muted-foreground/50">(optional)</span>
               </Label>
               <Input
@@ -233,11 +306,11 @@ export default function RegistrationGatePage() {
                 type="text"
                 value={form.bootstrapCode}
                 onChange={(e) => handleChange("bootstrapCode", e.target.value)}
-                placeholder="For first-user system access"
+                placeholder="Provided by your commander or S2"
                 className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
               />
               <p className="font-mono text-xs text-muted-foreground/50">
-                Only required for initial system bootstrap
+                Only required for initial system activation
               </p>
             </div>
 

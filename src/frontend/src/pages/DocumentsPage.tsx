@@ -156,7 +156,8 @@ function UploadModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reset on open
+  // Reset on open or when folder changes while modal is open
+  // biome-ignore lint/correctness/useExhaustiveDependencies: folder.id triggers a reset when the folder changes while modal is open; folder.requiredClearanceLevel initializes classLevel
   useEffect(() => {
     if (open) {
       setFile(null);
@@ -166,7 +167,7 @@ function UploadModal({
       setErrors({});
       setIsSubmitting(false);
     }
-  }, [open, folder.requiredClearanceLevel]);
+  }, [open, folder.requiredClearanceLevel, folder.id]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;

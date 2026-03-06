@@ -7,13 +7,20 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Bell,
+  CalendarDays,
+  CheckSquare,
   ChevronRight,
+  ClipboardList,
   FolderOpen,
   HardDrive,
+  HelpCircle,
   Key,
   Loader2,
   Mail,
+  Megaphone,
   MessageSquare,
+  Settings,
   Shield,
   ShieldCheck,
   Users,
@@ -49,24 +56,24 @@ const TILES: TileDefinition[] = [
     ocid: "hub.tile.2",
   },
   {
+    icon: HardDrive,
+    title: "File Storage",
+    description: "Blob storage and file management",
+    to: "/file-storage",
+    ocid: "hub.tile.3",
+  },
+  {
     icon: Users,
     title: "Personnel Directory",
     description: "View and manage personnel",
     to: "/personnel",
-    ocid: "hub.tile.3",
+    ocid: "hub.tile.4",
   },
   {
     icon: Mail,
     title: "Email Directory",
     description: "Organization contact directory",
     to: "/email-directory",
-    ocid: "hub.tile.4",
-  },
-  {
-    icon: HardDrive,
-    title: "File Storage",
-    description: "Blob storage and file management",
-    to: "/file-storage",
     ocid: "hub.tile.5",
   },
   {
@@ -77,6 +84,54 @@ const TILES: TileDefinition[] = [
     s2Only: true,
     ocid: "hub.tile.6",
   },
+];
+
+interface SecondaryTileDefinition {
+  icon: LucideIcon;
+  title: string;
+  to: string;
+  ocid: string;
+}
+
+const SECONDARY_TILES: SecondaryTileDefinition[] = [
+  {
+    icon: Bell,
+    title: "Notifications",
+    to: "/notifications",
+    ocid: "hub.secondary.1",
+  },
+  {
+    icon: ClipboardList,
+    title: "Audit Log",
+    to: "/audit-log",
+    ocid: "hub.secondary.2",
+  },
+  {
+    icon: Megaphone,
+    title: "Announcements",
+    to: "/announcements",
+    ocid: "hub.secondary.3",
+  },
+  {
+    icon: CalendarDays,
+    title: "Calendar",
+    to: "/calendar",
+    ocid: "hub.secondary.4",
+  },
+  { icon: CheckSquare, title: "Tasks", to: "/tasks", ocid: "hub.secondary.5" },
+  {
+    icon: Settings,
+    title: "Settings",
+    to: "/settings",
+    ocid: "hub.secondary.6",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Governance",
+    to: "/governance",
+    ocid: "hub.secondary.7",
+  },
+  { icon: HelpCircle, title: "Help", to: "/help", ocid: "hub.secondary.8" },
 ];
 
 interface ChecklistStep {
@@ -123,6 +178,9 @@ export default function HubPage() {
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const [checklistDismissed, setChecklistDismissed] = useState(
+    () => localStorage.getItem("omnis_s2_checklist_dismissed") === "true",
+  );
   const [isCallerAdminFlag, setIsCallerAdminFlag] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
   // Bootstrap code claim
@@ -206,7 +264,7 @@ export default function HubPage() {
         description: "You now have full S2 admin access.",
       });
     } catch {
-      toast.error("Invalid bootstrap code", {
+      toast.error("Invalid authorization code", {
         description: "The code was not accepted. Check and try again.",
       });
     } finally {
@@ -219,7 +277,13 @@ export default function HubPage() {
     !welcomeDismissed &&
     !isCallerAdminFlag &&
     !isS2Admin;
-  const showS2Checklist = isS2Admin && !profile?.isValidatedByCommander;
+  const showS2Checklist =
+    isS2Admin && !profile?.isValidatedByCommander && !checklistDismissed;
+
+  function handleDismissChecklist() {
+    localStorage.setItem("omnis_s2_checklist_dismissed", "true");
+    setChecklistDismissed(true);
+  }
   const showRecoveryPanel = isCallerAdminFlag && !isS2Admin;
 
   const visibleTiles = TILES.filter((t) => !t.s2Only || isS2Admin);
@@ -287,7 +351,7 @@ export default function HubPage() {
             )}
           </AnimatePresence>
 
-          {/* S2 Admin Bootstrap Claim Panel — for users who skipped the code at registration */}
+          {/* S2 Admin Authorization Code Claim Panel — for users who skipped the code at registration */}
           <AnimatePresence>
             {showClaimPanel && !isS2Admin && (
               <motion.div
@@ -320,8 +384,8 @@ export default function HubPage() {
                   </button>
                 </div>
                 <p className="mb-3 font-mono text-xs leading-relaxed text-slate-400">
-                  Enter the admin bootstrap code to claim S2 admin privileges
-                  for this account.
+                  Enter the Commander Authorization Code to claim S2 admin
+                  privileges for this account.
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -329,7 +393,7 @@ export default function HubPage() {
                     type="text"
                     value={claimCode}
                     onChange={(e) => setClaimCode(e.target.value)}
-                    placeholder="Bootstrap code"
+                    placeholder="Commander Authorization Code"
                     className="flex-1 border font-mono text-xs text-white"
                     style={{
                       backgroundColor: "#0a0e1a",
@@ -404,9 +468,20 @@ export default function HubPage() {
                 borderColor: "#f59e0b",
               }}
             >
-              <h2 className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.2em] text-amber-400">
-                S2 Setup Required
-              </h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-amber-400">
+                  S2 Setup Required
+                </h2>
+                <button
+                  type="button"
+                  data-ocid="hub.s2_checklist.close_button"
+                  onClick={handleDismissChecklist}
+                  className="text-slate-600 transition-colors hover:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  aria-label="Dismiss checklist"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
               <div className="space-y-2">
                 {CHECKLIST_STEPS.map((step) => (
                   <button
@@ -439,7 +514,7 @@ export default function HubPage() {
           <div className="mb-6 flex items-end justify-between">
             <div>
               <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-white">
-                Command Center
+                Operations Center
               </h1>
               <p className="mt-1 font-mono text-xs text-slate-500 uppercase tracking-widest">
                 Select a module to begin
@@ -452,7 +527,7 @@ export default function HubPage() {
                 data-ocid="hub.s2_claim.open_modal_button"
                 onClick={() => setShowClaimPanel(true)}
                 className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-600 transition-colors hover:text-amber-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                title="Claim S2 admin access with bootstrap code"
+                title="Claim S2 admin access with Commander Authorization Code"
               >
                 <Key className="h-3 w-3" />
                 Admin Access
@@ -502,6 +577,49 @@ export default function HubPage() {
                     </p>
                   </div>
                   <ChevronRight className="absolute bottom-4 right-4 h-3.5 w-3.5 text-slate-600 transition-all group-hover:translate-x-0.5 group-hover:text-amber-500" />
+                </motion.button>
+              );
+            })}
+          </div>
+
+          {/* Divider */}
+          <div className="my-8 flex items-center gap-4">
+            <div
+              className="h-px flex-1"
+              style={{ backgroundColor: "#1a2235" }}
+            />
+            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
+              Quick Access
+            </span>
+            <div
+              className="h-px flex-1"
+              style={{ backgroundColor: "#1a2235" }}
+            />
+          </div>
+
+          {/* Secondary compact tiles */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+            {SECONDARY_TILES.map((tile, index) => {
+              const Icon = tile.icon;
+              return (
+                <motion.button
+                  key={tile.to}
+                  type="button"
+                  data-ocid={tile.ocid}
+                  custom={index + TILES.length}
+                  variants={tileVariants}
+                  initial="hidden"
+                  animate="visible"
+                  onClick={() => void navigate({ to: tile.to })}
+                  className="group flex flex-col items-center gap-2 rounded border px-3 py-3 text-center outline-none transition-all duration-200 hover:border-amber-500/50 focus-visible:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500/30"
+                  style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Icon className="h-4 w-4 text-slate-500 transition-colors group-hover:text-amber-400" />
+                  <span className="font-mono text-[9px] uppercase leading-tight tracking-wider text-slate-500 transition-colors group-hover:text-slate-300">
+                    {tile.title}
+                  </span>
                 </motion.button>
               );
             })}

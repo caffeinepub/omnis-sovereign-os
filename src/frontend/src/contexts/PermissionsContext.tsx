@@ -72,7 +72,6 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   }, [identity]);
 
   const refreshProfile = useCallback(async () => {
-    setHasFetched(false);
     await fetchProfile();
   }, [fetchProfile]);
 

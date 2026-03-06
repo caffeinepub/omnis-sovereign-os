@@ -7,7 +7,7 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQuery } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 // ─── Skeleton Rows ────────────────────────────────────────────────────────────
 
@@ -41,7 +41,18 @@ function TableSkeleton() {
 export default function EmailDirectoryPage() {
   const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
+  // Displayed value updates immediately; filter state is debounced
+  const [inputValue, setInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleSearchChange(val: string) {
+    setInputValue(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchQuery(val);
+    }, 200);
+  }
 
   const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
@@ -94,8 +105,8 @@ export default function EmailDirectoryPage() {
           <div className="mb-5">
             <Input
               data-ocid="email_directory.search_input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={inputValue}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search by name or role..."
               className="max-w-sm border font-mono text-xs text-white placeholder:text-slate-600"
               style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}

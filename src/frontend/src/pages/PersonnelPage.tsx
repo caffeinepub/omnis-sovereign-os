@@ -1,9 +1,31 @@
+/**
+ * PersonnelPage — Directory + S2 Onboarding Queue + profile field locking
+ *
+ * MOTOKO BACKLOG (future session):
+ * - verified, verifiedBy, verifiedAt fields on ExtendedProfile for true backend enforcement
+ * - lockProfileFields / unlockProfileFields S2-only backend functions
+ * - registrationStatus (pending/verified/active/suspended) on ExtendedProfile
+ * - Backend-enforced rejection of field updates on verified profiles
+ */
+
 import type { ExtendedProfile } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
 import { ClearanceBadge } from "@/components/shared/ClearanceBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormError } from "@/components/shared/FormError";
+import { RankSelector } from "@/components/shared/RankSelector";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
+import { VerifiedBadge } from "@/components/shared/VerifiedBadge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,12 +44,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CLEARANCE_LABELS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { formatDisplayName, parseDisplayName } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, Users } from "lucide-react";
+import { Clock, Loader2, Lock, Pencil, ShieldCheck, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -116,15 +146,37 @@ function PersonnelCard({
 
       {/* Info */}
       <div className="w-full text-center">
-        <p className="truncate font-mono text-sm font-bold uppercase tracking-wider text-white">
-          {profile.name}
-        </p>
+        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          <p className="truncate font-mono text-sm font-bold uppercase tracking-wider text-white">
+            {profile.name}
+          </p>
+          {profile.isValidatedByCommander && <VerifiedBadge />}
+        </div>
         <p className="mt-0.5 font-mono text-[11px] uppercase tracking-wider text-slate-400">
           {profile.rank || "—"}
         </p>
         <p className="mt-0.5 truncate font-mono text-[10px] text-slate-500">
           {profile.orgRole || "—"}
         </p>
+      </div>
+
+      {/* Verification status row */}
+      <div className="w-full">
+        {profile.isValidatedByCommander ? (
+          <div className="flex items-center justify-center gap-1.5">
+            <ShieldCheck className="h-3 w-3 text-amber-500" />
+            <span className="font-mono text-[9px] uppercase tracking-wider text-amber-500/80">
+              S2 Verified
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-1.5">
+            <Clock className="h-3 w-3 text-slate-600" />
+            <span className="font-mono text-[9px] uppercase tracking-wider text-slate-600">
+              Pending Verification
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Clearance Badge */}
@@ -164,6 +216,50 @@ function PersonnelSkeleton() {
   );
 }
 
+// ─── Locked field display ─────────────────────────────────────────────────────
+
+function LockedField({
+  label,
+  value,
+  dataOcid,
+}: {
+  label: string;
+  value: string;
+  dataOcid?: string;
+}) {
+  return (
+    <div>
+      <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+        {label}
+      </Label>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              data-ocid={dataOcid ?? "personnel.field_locked.tooltip"}
+              className="flex items-center gap-2 rounded border px-3 py-2"
+              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
+            >
+              <Lock className="h-3 w-3 shrink-0 text-slate-600" />
+              <span className="font-mono text-xs text-slate-300">
+                {value || "—"}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side="right"
+            className="max-w-xs font-mono text-[10px]"
+            style={{ backgroundColor: "#0f1626", borderColor: "#2a3347" }}
+          >
+            Field locked after S2 verification. Submit a correction request to
+            your S2.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
 interface EditModalProps {
@@ -171,16 +267,28 @@ interface EditModalProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
+  viewerIsS2Admin: boolean;
+  viewerPrincipal: string;
 }
 
-function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
+function EditModal({
+  profile,
+  open,
+  onOpenChange,
+  onSuccess,
+  viewerIsS2Admin,
+  viewerPrincipal,
+}: EditModalProps) {
   const { actor } = useActor();
-  const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
-  const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
-  const [name, setName] = useState(profile?.name ?? "");
+  // Split name state
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [mi, setMi] = useState("");
   const [rank, setRank] = useState(profile?.rank ?? "");
+  const [editBranch, setEditBranch] = useState("");
+  const [editCategory, setEditCategory] = useState("");
   const [email, setEmail] = useState(profile?.email ?? "");
   const [orgRole, setOrgRole] = useState(profile?.orgRole ?? "");
   const [clearanceLevel, setClearanceLevel] = useState(
@@ -188,8 +296,9 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
   );
   const [makeS2Admin, setMakeS2Admin] = useState(profile?.isS2Admin ?? false);
   const [nameError, setNameError] = useState("");
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
 
-  // Sync state when profile prop changes (i.e., when a different card is clicked)
+  // Sync state when profile prop changes
   const prevProfileId = profile?.principalId.toString();
   const [lastSyncedId, setLastSyncedId] = useState<string | undefined>(
     prevProfileId,
@@ -197,8 +306,13 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
 
   if (prevProfileId !== lastSyncedId && profile) {
     setLastSyncedId(prevProfileId);
-    setName(profile.name);
+    const parsed = parseDisplayName(profile.name);
+    setLastName(parsed.lastName);
+    setFirstName(parsed.firstName);
+    setMi(parsed.mi);
     setRank(profile.rank);
+    setEditBranch("");
+    setEditCategory("");
     setEmail(profile.email);
     setOrgRole(profile.orgRole);
     setClearanceLevel(String(Number(profile.clearanceLevel)));
@@ -206,12 +320,22 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
     setNameError("");
   }
 
+  // Field locking: locked if profile is verified AND the viewer is NOT S2 AND viewing their own profile
+  const isViewingOwnProfile =
+    profile?.principalId.toString() === viewerPrincipal;
+  const nameRankLocked =
+    profile?.isValidatedByCommander === true &&
+    !viewerIsS2Admin &&
+    isViewingOwnProfile;
+
   const mutation = useMutation({
     mutationFn: async () => {
       if (!actor || !profile) throw new Error("Not ready");
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        setNameError("Name is required.");
+
+      const formattedName = formatDisplayName(rank, lastName, firstName, mi);
+      const trimmedName = formattedName.trim();
+      if (!trimmedName || !lastName.trim() || !firstName.trim()) {
+        setNameError("Last name and first name are required.");
         throw new Error("Validation failed");
       }
       setNameError("");
@@ -230,7 +354,7 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
     onSuccess: () => {
       toast.success("Profile updated");
       void queryClient.invalidateQueries({
-        queryKey: [principalStr, "personnel-profiles"],
+        queryKey: [viewerPrincipal, "personnel-profiles"],
       });
       onOpenChange(false);
       onSuccess();
@@ -242,170 +366,513 @@ function EditModal({ profile, open, onOpenChange, onSuccess }: EditModalProps) {
     },
   });
 
+  const lockedDisplayName = profile
+    ? formatDisplayName(rank, lastName, firstName, mi) || profile.name
+    : "";
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        data-ocid="personnel.edit_modal.modal"
-        className="border sm:max-w-lg"
-        style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
-      >
-        <DialogHeader>
-          <DialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
-            Edit Personnel Profile
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          data-ocid="personnel.edit_modal.modal"
+          className="border sm:max-w-lg"
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
+              Edit Personnel Profile
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Name */}
-          <div>
-            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Name <span className="text-red-400">*</span>
-            </Label>
-            <Input
-              data-ocid="personnel.edit_modal.name.input"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (e.target.value.trim()) setNameError("");
-              }}
-              className="border font-mono text-xs text-white"
-              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              placeholder="Full name"
-            />
-            <FormError message={nameError} />
-          </div>
+          <div className="space-y-4 py-2">
+            {/* Name — locked if verified and non-S2 viewing own profile */}
+            {nameRankLocked ? (
+              <LockedField label="Name *" value={lockedDisplayName} />
+            ) : (
+              <div className="space-y-2">
+                <Label className="block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                  Name <span className="text-red-400">*</span>
+                </Label>
+                <div className="grid grid-cols-[1fr_1fr_56px] gap-2">
+                  <div>
+                    <Label className="mb-1 block font-mono text-[9px] uppercase tracking-wider text-slate-600">
+                      Last
+                    </Label>
+                    <Input
+                      data-ocid="personnel.edit_modal.last_name.input"
+                      value={lastName}
+                      onChange={(e) => {
+                        setLastName(e.target.value);
+                        if (e.target.value.trim()) setNameError("");
+                      }}
+                      className="border font-mono text-xs uppercase text-white"
+                      style={{
+                        backgroundColor: "#1a2235",
+                        borderColor: "#2a3347",
+                      }}
+                      placeholder="SMITH"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1 block font-mono text-[9px] uppercase tracking-wider text-slate-600">
+                      First
+                    </Label>
+                    <Input
+                      data-ocid="personnel.edit_modal.first_name.input"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="border font-mono text-xs text-white"
+                      style={{
+                        backgroundColor: "#1a2235",
+                        borderColor: "#2a3347",
+                      }}
+                      placeholder="John"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1 block font-mono text-[9px] uppercase tracking-wider text-slate-600">
+                      MI
+                    </Label>
+                    <Input
+                      data-ocid="personnel.edit_modal.mi.input"
+                      value={mi}
+                      onChange={(e) => setMi(e.target.value.slice(0, 1))}
+                      maxLength={1}
+                      className="border font-mono text-xs text-center uppercase text-white"
+                      style={{
+                        backgroundColor: "#1a2235",
+                        borderColor: "#2a3347",
+                      }}
+                      placeholder="A"
+                    />
+                  </div>
+                </div>
+                <FormError message={nameError} />
+              </div>
+            )}
 
-          {/* Rank */}
-          <div>
-            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Rank
-            </Label>
-            <Input
-              data-ocid="personnel.edit_modal.rank.input"
-              value={rank}
-              onChange={(e) => setRank(e.target.value)}
-              className="border font-mono text-xs text-white"
-              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              placeholder="e.g. SGT, CPT, MAJ"
-            />
-          </div>
+            {/* Rank — locked if verified and non-S2 viewing own profile */}
+            {nameRankLocked ? (
+              <LockedField label="Rank" value={rank} />
+            ) : (
+              <RankSelector
+                branch={editBranch}
+                category={editCategory}
+                rank={rank}
+                onBranchChange={(v) => {
+                  setEditBranch(v);
+                  setEditCategory("");
+                  setRank("");
+                }}
+                onCategoryChange={(v) => {
+                  setEditCategory(v);
+                  setRank("");
+                }}
+                onRankChange={setRank}
+                variant="modal"
+              />
+            )}
 
-          {/* Email */}
-          <div>
-            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Email
-            </Label>
-            <Input
-              data-ocid="personnel.edit_modal.email.input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="border font-mono text-xs text-white"
-              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              placeholder="email@unit.mil"
-              type="email"
-            />
-          </div>
+            {/* Request correction link — visible only to non-S2 viewing their own verified profile */}
+            {nameRankLocked && (
+              <button
+                type="button"
+                data-ocid="personnel.request_correction.button"
+                onClick={() => setShowCorrectionDialog(true)}
+                className="font-mono text-[10px] uppercase tracking-wider text-amber-500/70 underline-offset-4 hover:text-amber-500 hover:underline"
+              >
+                Request Correction for Locked Fields
+              </button>
+            )}
 
-          {/* OrgRole */}
-          <div>
-            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Org Role
-            </Label>
-            <Input
-              data-ocid="personnel.edit_modal.org_role.input"
-              value={orgRole}
-              onChange={(e) => setOrgRole(e.target.value)}
-              className="border font-mono text-xs text-white"
-              style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              placeholder="e.g. S2, S6, Commander"
-            />
-          </div>
-
-          {/* Clearance Level */}
-          <div>
-            <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Clearance Level
-            </Label>
-            <Select value={clearanceLevel} onValueChange={setClearanceLevel}>
-              <SelectTrigger
-                data-ocid="personnel.edit_modal.clearance.select"
+            {/* Email */}
+            <div>
+              <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                Email
+              </Label>
+              <Input
+                data-ocid="personnel.edit_modal.email.input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="border font-mono text-xs text-white"
                 style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              >
-                <SelectValue placeholder="Select clearance level" />
-              </SelectTrigger>
-              <SelectContent
-                style={{
-                  backgroundColor: "#0f1626",
-                  borderColor: "#1a2235",
-                }}
-              >
-                {Object.entries(CLEARANCE_LABELS).map(([lvl, label]) => (
-                  <SelectItem
-                    key={lvl}
-                    value={lvl}
-                    className="font-mono text-xs text-slate-300 focus:text-white"
-                  >
-                    {lvl} — {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Make S2 Admin */}
-          <div
-            className="flex items-center justify-between rounded border px-3 py-2.5"
-            style={{ borderColor: "#2a3347" }}
-          >
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-                S2 Admin
-              </p>
-              <p className="font-mono text-[9px] text-slate-600">
-                Grants full system access
-              </p>
+                placeholder="email@unit.mil"
+                type="email"
+              />
             </div>
-            <Switch
-              data-ocid="personnel.edit_modal.s2_admin.switch"
-              checked={makeS2Admin}
-              onCheckedChange={setMakeS2Admin}
-            />
-          </div>
-        </div>
 
-        <DialogFooter className="gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            data-ocid="personnel.edit_modal.cancel_button"
+            {/* OrgRole */}
+            <div>
+              <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                Org Role
+              </Label>
+              <Input
+                data-ocid="personnel.edit_modal.org_role.input"
+                value={orgRole}
+                onChange={(e) => setOrgRole(e.target.value)}
+                className="border font-mono text-xs text-white"
+                style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
+                placeholder="e.g. S2, S6, Commander"
+              />
+            </div>
+
+            {/* Clearance Level */}
+            <div>
+              <Label className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                Clearance Level
+              </Label>
+              <Select value={clearanceLevel} onValueChange={setClearanceLevel}>
+                <SelectTrigger
+                  data-ocid="personnel.edit_modal.clearance.select"
+                  className="border font-mono text-xs text-white"
+                  style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
+                >
+                  <SelectValue placeholder="Select clearance level" />
+                </SelectTrigger>
+                <SelectContent
+                  style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+                >
+                  {Object.entries(CLEARANCE_LABELS).map(([lvl, label]) => (
+                    <SelectItem
+                      key={lvl}
+                      value={lvl}
+                      className="font-mono text-xs text-slate-300 focus:text-white"
+                    >
+                      {lvl} — {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Make S2 Admin */}
+            <div
+              className="flex items-center justify-between rounded border px-3 py-2.5"
+              style={{ borderColor: "#2a3347" }}
+            >
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
+                  S2 Admin
+                </p>
+                <p className="font-mono text-[9px] text-slate-600">
+                  Grants full system access
+                </p>
+              </div>
+              <Switch
+                data-ocid="personnel.edit_modal.s2_admin.switch"
+                checked={makeS2Admin}
+                onCheckedChange={setMakeS2Admin}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              data-ocid="personnel.edit_modal.cancel_button"
+              className="border font-mono text-xs uppercase tracking-wider text-slate-300"
+              style={{ borderColor: "#2a3347" }}
+              onClick={() => onOpenChange(false)}
+              disabled={mutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              data-ocid="personnel.edit_modal.save_button"
+              className="gap-1.5 font-mono text-xs uppercase tracking-wider"
+              style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Correction request info dialog */}
+      <AlertDialog
+        open={showCorrectionDialog}
+        onOpenChange={setShowCorrectionDialog}
+      >
+        <AlertDialogContent
+          data-ocid="personnel.correction_info.dialog"
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
+              Locked Field Correction
+            </AlertDialogTitle>
+            <AlertDialogDescription className="font-mono text-xs leading-relaxed text-slate-400">
+              To correct a locked field, contact your S2 or security officer
+              directly. They will unlock and re-verify your profile. Name and
+              rank fields are locked after S2 verification to prevent
+              misrepresentation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setShowCorrectionDialog(false)}
+              className="font-mono text-xs uppercase tracking-wider"
+              style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+            >
+              Understood
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ─── Re-auth confirm dialog (S2 editing verified profile) ─────────────────────
+
+interface ReAuthConfirmProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConfirm: () => void;
+  profileName: string;
+}
+
+function ReAuthConfirmDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  profileName,
+}: ReAuthConfirmProps) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent
+        data-ocid="personnel.edit_verified.dialog"
+        style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+      >
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
+            Edit Verified Profile
+          </AlertDialogTitle>
+          <AlertDialogDescription className="font-mono text-xs leading-relaxed text-slate-400">
+            You are about to edit the verified profile of{" "}
+            <span className="font-semibold text-amber-500">{profileName}</span>.
+            This action is logged and requires S2 authority. Continue?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel
+            data-ocid="personnel.edit_verified.cancel_button"
             className="border font-mono text-xs uppercase tracking-wider text-slate-300"
-            style={{ borderColor: "#2a3347" }}
-            onClick={() => onOpenChange(false)}
-            disabled={mutation.isPending}
+            style={{ borderColor: "#2a3347", backgroundColor: "transparent" }}
           >
             Cancel
-          </Button>
-          <Button
-            type="button"
-            data-ocid="personnel.edit_modal.save_button"
-            className="gap-1.5 font-mono text-xs uppercase tracking-wider"
+          </AlertDialogCancel>
+          <AlertDialogAction
+            data-ocid="personnel.edit_verified.confirm_button"
+            onClick={onConfirm}
+            className="font-mono text-xs uppercase tracking-wider"
             style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
           >
-            {mutation.isPending ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            Continue
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// ─── Onboarding Queue (S2 only) ───────────────────────────────────────────────
+
+interface OnboardingQueueProps {
+  profiles: ExtendedProfile[];
+  isLoading: boolean;
+  principalStr: string;
+  onVerified: () => void;
+}
+
+function OnboardingQueue({
+  profiles,
+  isLoading,
+  principalStr,
+  onVerified,
+}: OnboardingQueueProps) {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  const [confirmTarget, setConfirmTarget] = useState<ExtendedProfile | null>(
+    null,
+  );
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const pendingProfiles = profiles.filter(
+    (p) => !p.isValidatedByCommander && !p.isS2Admin,
+  );
+
+  const verifyMutation = useMutation({
+    mutationFn: async (profile: ExtendedProfile) => {
+      if (!actor) throw new Error("Actor not ready");
+      await actor.validateS2Admin(profile.principalId);
+    },
+    onSuccess: () => {
+      toast.success("User verified and activated");
+      void queryClient.invalidateQueries({
+        queryKey: [principalStr, "personnel-profiles"],
+      });
+      setConfirmOpen(false);
+      setConfirmTarget(null);
+      onVerified();
+    },
+    onError: () => {
+      toast.error("Failed to verify user");
+    },
+  });
+
+  const handleVerifyClick = (profile: ExtendedProfile) => {
+    setConfirmTarget(profile);
+    setConfirmOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <div data-ocid="personnel.queue.loading_state" className="py-8">
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-slate-600" />
+          <span className="font-mono text-xs text-slate-600">
+            Loading queue…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (pendingProfiles.length === 0) {
+    return (
+      <div
+        data-ocid="personnel.queue.empty_state"
+        className="py-12 text-center"
+      >
+        <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-slate-700" />
+        <p className="font-mono text-xs uppercase tracking-wider text-slate-600">
+          No users pending verification.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        data-ocid="personnel.queue.table"
+        className="overflow-hidden rounded border"
+        style={{ borderColor: "#1a2235" }}
+      >
+        {/* Table header */}
+        <div
+          className="grid grid-cols-[1fr_auto_1fr_1fr_auto] gap-4 border-b px-4 py-2.5"
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          {["Name", "Rank", "Email", "Org Role", "Action"].map((col) => (
+            <span
+              key={col}
+              className="font-mono text-[9px] uppercase tracking-widest text-slate-600"
+            >
+              {col}
+            </span>
+          ))}
+        </div>
+
+        {/* Rows */}
+        {pendingProfiles.map((profile, idx) => (
+          <div
+            key={profile.principalId.toString()}
+            data-ocid={`personnel.queue.item.${idx + 1}`}
+            className="grid grid-cols-[1fr_auto_1fr_1fr_auto] items-center gap-4 border-b px-4 py-3 transition-colors last:border-0 hover:bg-white/[0.02]"
+            style={{ borderColor: "#1a2235" }}
+          >
+            <span className="truncate font-mono text-xs text-white">
+              {profile.name || "—"}
+            </span>
+            <span className="whitespace-nowrap font-mono text-[11px] text-slate-400">
+              {profile.rank || "—"}
+            </span>
+            <span className="truncate font-mono text-[11px] text-slate-500">
+              {profile.email || "—"}
+            </span>
+            <span className="truncate font-mono text-[11px] text-slate-500">
+              {profile.orgRole || "—"}
+            </span>
+            <button
+              type="button"
+              data-ocid={`personnel.queue.verify_button.${idx + 1}`}
+              onClick={() => handleVerifyClick(profile)}
+              disabled={verifyMutation.isPending}
+              className="shrink-0 rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-all hover:bg-amber-500/10 disabled:opacity-40"
+              style={{
+                borderColor: "rgba(245,158,11,0.4)",
+                color: "#f59e0b",
+              }}
+            >
+              Verify & Activate
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Confirm dialog */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-sm uppercase tracking-widest text-white">
+              Verify Personnel
+            </AlertDialogTitle>
+            <AlertDialogDescription className="font-mono text-xs leading-relaxed text-slate-400">
+              Verify{" "}
+              <span className="font-semibold text-amber-500">
+                {confirmTarget?.name}
+              </span>{" "}
+              and grant system access? This action is logged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel
+              className="border font-mono text-xs uppercase tracking-wider text-slate-300"
+              style={{ borderColor: "#2a3347", backgroundColor: "transparent" }}
+              onClick={() => {
+                setConfirmOpen(false);
+                setConfirmTarget(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                confirmTarget && verifyMutation.mutate(confirmTarget)
+              }
+              disabled={verifyMutation.isPending}
+              className="font-mono text-xs uppercase tracking-wider"
+              style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+            >
+              {verifyMutation.isPending ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Verifying…
+                </span>
+              ) : (
+                "Confirm"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -418,8 +885,16 @@ export default function PersonnelPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [clearanceFilter, setClearanceFilter] = useState("all");
+
+  // Edit state
   const [editTarget, setEditTarget] = useState<ExtendedProfile | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+
+  // Re-auth confirm before editing verified profile (S2 only)
+  const [reAuthTarget, setReAuthTarget] = useState<ExtendedProfile | null>(
+    null,
+  );
+  const [reAuthOpen, setReAuthOpen] = useState(false);
 
   const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
@@ -450,9 +925,28 @@ export default function PersonnelPage() {
 
   // ── Edit handlers ─────────────────────────────────────────────────────────
   function handleEdit(profile: ExtendedProfile) {
-    setEditTarget(profile);
-    setEditOpen(true);
+    // S2 editing a verified profile: show re-auth confirmation first
+    if (isS2Admin && profile.isValidatedByCommander) {
+      setReAuthTarget(profile);
+      setReAuthOpen(true);
+    } else {
+      setEditTarget(profile);
+      setEditOpen(true);
+    }
   }
+
+  function handleReAuthConfirm() {
+    setReAuthOpen(false);
+    if (reAuthTarget) {
+      setEditTarget(reAuthTarget);
+      setEditOpen(true);
+    }
+    setReAuthTarget(null);
+  }
+
+  const pendingCount = profiles.filter(
+    (p) => !p.isValidatedByCommander && !p.isS2Admin,
+  ).length;
 
   return (
     <div
@@ -482,7 +976,6 @@ export default function PersonnelPage() {
 
             {/* Controls */}
             <div className="flex flex-wrap items-center gap-3">
-              {/* Search */}
               <Input
                 data-ocid="personnel.search_input"
                 value={searchQuery}
@@ -491,8 +984,6 @@ export default function PersonnelPage() {
                 className="w-52 border font-mono text-xs text-white placeholder:text-slate-600"
                 style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
               />
-
-              {/* Clearance filter */}
               <Select
                 value={clearanceFilter}
                 onValueChange={setClearanceFilter}
@@ -505,10 +996,7 @@ export default function PersonnelPage() {
                   <SelectValue placeholder="All Clearances" />
                 </SelectTrigger>
                 <SelectContent
-                  style={{
-                    backgroundColor: "#0f1626",
-                    borderColor: "#1a2235",
-                  }}
+                  style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
                 >
                   <SelectItem
                     value="all"
@@ -530,33 +1018,110 @@ export default function PersonnelPage() {
             </div>
           </div>
 
-          {/* Content */}
-          {isLoading ? (
-            <PersonnelSkeleton />
-          ) : filteredProfiles.length === 0 ? (
-            <div data-ocid="personnel.empty_state">
-              <EmptyState
-                icon={<Users />}
-                message={
-                  searchQuery || clearanceFilter !== "all"
-                    ? "No personnel match your filters"
-                    : "No personnel registered"
-                }
-                className="mt-12"
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredProfiles.map((profile, idx) => (
-                <PersonnelCard
-                  key={profile.principalId.toString()}
-                  profile={profile}
-                  index={idx + 1}
-                  isS2Admin={isS2Admin}
-                  onEdit={handleEdit}
+          {/* Tabs — S2 sees both; others see only the directory */}
+          {isS2Admin ? (
+            <Tabs defaultValue="directory">
+              <TabsList
+                className="mb-6 border"
+                style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+              >
+                <TabsTrigger
+                  value="directory"
+                  data-ocid="personnel.directory.tab"
+                  className="font-mono text-[10px] uppercase tracking-widest data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-500"
+                >
+                  All Personnel
+                </TabsTrigger>
+                <TabsTrigger
+                  value="queue"
+                  data-ocid="personnel.queue.tab"
+                  className="font-mono text-[10px] uppercase tracking-widest data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-500"
+                >
+                  Onboarding Queue
+                  {pendingCount > 0 && (
+                    <span
+                      className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold"
+                      style={{
+                        backgroundColor: "rgba(245,158,11,0.2)",
+                        color: "#f59e0b",
+                      }}
+                    >
+                      {pendingCount}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="directory">
+                {isLoading ? (
+                  <PersonnelSkeleton />
+                ) : filteredProfiles.length === 0 ? (
+                  <div data-ocid="personnel.empty_state">
+                    <EmptyState
+                      icon={<Users />}
+                      message={
+                        searchQuery || clearanceFilter !== "all"
+                          ? "No personnel match your filters"
+                          : "No personnel registered"
+                      }
+                      className="mt-12"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {filteredProfiles.map((profile, idx) => (
+                      <PersonnelCard
+                        key={profile.principalId.toString()}
+                        profile={profile}
+                        index={idx + 1}
+                        isS2Admin={isS2Admin}
+                        onEdit={handleEdit}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="queue">
+                <OnboardingQueue
+                  profiles={profiles}
+                  isLoading={isLoading}
+                  principalStr={principalStr}
+                  onVerified={() => {}}
                 />
-              ))}
-            </div>
+              </TabsContent>
+            </Tabs>
+          ) : (
+            // Non-S2: just show the directory, no tabs
+            <>
+              {isLoading ? (
+                <PersonnelSkeleton />
+              ) : filteredProfiles.length === 0 ? (
+                <div data-ocid="personnel.empty_state">
+                  <EmptyState
+                    icon={<Users />}
+                    message={
+                      searchQuery || clearanceFilter !== "all"
+                        ? "No personnel match your filters"
+                        : "No personnel registered"
+                    }
+                    className="mt-12"
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filteredProfiles.map((profile, idx) => (
+                    <PersonnelCard
+                      key={profile.principalId.toString()}
+                      profile={profile}
+                      index={idx + 1}
+                      isS2Admin={isS2Admin}
+                      onEdit={handleEdit}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -567,6 +1132,16 @@ export default function PersonnelPage() {
         open={editOpen}
         onOpenChange={setEditOpen}
         onSuccess={() => setEditTarget(null)}
+        viewerIsS2Admin={isS2Admin}
+        viewerPrincipal={principalStr}
+      />
+
+      {/* Re-auth confirm dialog for S2 editing a verified profile */}
+      <ReAuthConfirmDialog
+        open={reAuthOpen}
+        onOpenChange={setReAuthOpen}
+        onConfirm={handleReAuthConfirm}
+        profileName={reAuthTarget?.name ?? ""}
       />
 
       {/* Footer */}

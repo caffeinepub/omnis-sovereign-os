@@ -1164,8 +1164,17 @@ export default function AccessMonitoringPage() {
     }
   }, [hasInitializedEvents, eventsLoading, rawEvents]);
 
+  const [activeMonitoringTab, setActiveMonitoringTab] =
+    useState("anomaly-events");
   const [userFilter, setUserFilter] = useState("all");
   const [folderFilter, setFolderFilter] = useState("all");
+  // Reset filters when tab changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeMonitoringTab is the only relevant trigger; setters are stable
+  useEffect(() => {
+    setUserFilter("all");
+    setFolderFilter("all");
+  }, [activeMonitoringTab]);
+
   const [resolveTarget, setResolveTarget] = useState<AnomalyEvent | null>(null);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -1404,7 +1413,11 @@ export default function AccessMonitoringPage() {
           )}
 
           {/* ── Tabs ────────────────────────────────────────────────────── */}
-          <Tabs defaultValue="anomaly-events" className="space-y-4">
+          <Tabs
+            value={activeMonitoringTab}
+            onValueChange={setActiveMonitoringTab}
+            className="space-y-4"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <TabsList
                 className="border"
