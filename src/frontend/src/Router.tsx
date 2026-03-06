@@ -38,6 +38,7 @@ const TasksPage = lazy(() => import("@/pages/TasksPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const GovernancePage = lazy(() => import("@/pages/GovernancePage"));
 const HelpPage = lazy(() => import("@/pages/HelpPage"));
+const ProfilePreviewPage = lazy(() => import("@/pages/ProfilePreviewPage"));
 const OnboardingPage = lazy(() => import("@/pages/OnboardingPage"));
 const PendingVerificationPage = lazy(
   () => import("@/pages/PendingVerificationPage"),
@@ -166,7 +167,7 @@ const hubRoute = createRoute({
 });
 
 const registerRoute = createRoute({
-  getParentRoute: () => authRoute,
+  getParentRoute: () => rootRoute,
   path: "/register",
   component: () => (
     <Suspense fallback={<PageLoader />}>
@@ -325,8 +326,18 @@ const helpRoute = createRoute({
   ),
 });
 
-const onboardingRoute = createRoute({
+const profilePreviewRoute = createRoute({
   getParentRoute: () => authRoute,
+  path: "/profile-preview",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <ProfilePreviewPage />
+    </Suspense>
+  ),
+});
+
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
   path: "/onboarding",
   component: () => (
     <Suspense fallback={<PageLoader />}>
@@ -336,7 +347,7 @@ const onboardingRoute = createRoute({
 });
 
 const pendingRoute = createRoute({
-  getParentRoute: () => authRoute,
+  getParentRoute: () => rootRoute,
   path: "/pending",
   component: () => (
     <Suspense fallback={<PageLoader />}>
@@ -348,9 +359,11 @@ const pendingRoute = createRoute({
 // --- Route tree ---
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  registerRoute,
+  onboardingRoute,
+  pendingRoute,
   authRoute.addChildren([
     hubRoute,
-    registerRoute,
     validateCommanderRoute,
     documentsRoute,
     messagesRoute,
@@ -366,8 +379,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     governanceRoute,
     helpRoute,
-    onboardingRoute,
-    pendingRoute,
+    profilePreviewRoute,
   ]),
 ]);
 

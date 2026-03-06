@@ -57,7 +57,16 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName, parseDisplayName } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Loader2, Lock, Pencil, ShieldCheck, Users } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  Clock,
+  ExternalLink,
+  Loader2,
+  Lock,
+  Pencil,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -876,12 +885,134 @@ function OnboardingQueue({
   );
 }
 
+// ─── Demo Profile (preview only — not stored in backend) ─────────────────────
+
+const DEMO_PROFILE: ExtendedProfile = {
+  principalId: {
+    toString: () => "demo-gracie-preview",
+    compareTo: () => 0 as 0 | 1 | -1,
+    isAnonymous: () => false,
+    toUint8Array: () => new Uint8Array(),
+    toHex: () => "",
+    toText: () => "demo-gracie-preview",
+  } as unknown as ExtendedProfile["principalId"],
+  name: "1SG GRACIE, Nicholas J",
+  rank: "First Sergeant (1SG)",
+  email: "nicholas.j.gracie.mil@army.mil",
+  orgRole: "First Sergeant, HHC 1-501ST PIR",
+  clearanceLevel: 4n,
+  isS2Admin: false,
+  isValidatedByCommander: true,
+  registered: true,
+  avatarUrl: undefined,
+};
+
+// ─── Demo Card wrapper (amber outline to distinguish from live data) ──────────
+
+function DemoPersonnelCard({
+  isS2Admin,
+  onViewProfile,
+}: {
+  isS2Admin: boolean;
+  onViewProfile: () => void;
+}) {
+  return (
+    <div className="relative">
+      {/* Demo label */}
+      <div className="absolute -top-2.5 left-3 z-10">
+        <span
+          className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest"
+          style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+        >
+          Preview
+        </span>
+      </div>
+
+      <div
+        data-ocid="personnel.demo_card"
+        className="group relative flex flex-col items-center gap-4 rounded border-2 p-5 transition-all duration-200"
+        style={{
+          backgroundColor: "#1a2235",
+          borderColor: "#f59e0b",
+        }}
+      >
+        {/* S2 Edit hint */}
+        {isS2Admin && (
+          <button
+            type="button"
+            className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded opacity-60 hover:bg-amber-500/10 hover:opacity-100"
+            title="Demo only — edit not connected to backend"
+            aria-label="Demo edit"
+          >
+            <Pencil className="h-3.5 w-3.5 text-amber-500/60" />
+          </button>
+        )}
+
+        {/* Avatar */}
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-full border-2 font-mono text-lg font-bold tracking-wider"
+          style={{
+            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            borderColor: "rgba(245, 158, 11, 0.3)",
+            color: "#f59e0b",
+          }}
+        >
+          NJG
+        </div>
+
+        {/* Info */}
+        <div className="w-full text-center">
+          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+            <p className="truncate font-mono text-sm font-bold uppercase tracking-wider text-white">
+              {DEMO_PROFILE.name}
+            </p>
+            <VerifiedBadge />
+          </div>
+          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-wider text-slate-400">
+            {DEMO_PROFILE.rank}
+          </p>
+          <p className="mt-0.5 truncate font-mono text-[10px] text-slate-500">
+            {DEMO_PROFILE.orgRole}
+          </p>
+        </div>
+
+        {/* Verification status */}
+        <div className="w-full">
+          <div className="flex items-center justify-center gap-1.5">
+            <ShieldCheck className="h-3 w-3 text-amber-500" />
+            <span className="font-mono text-[9px] uppercase tracking-wider text-amber-500/80">
+              S2 Verified
+            </span>
+          </div>
+        </div>
+
+        {/* Clearance Badge */}
+        <div className="mt-auto">
+          <ClearanceBadge level={Number(DEMO_PROFILE.clearanceLevel)} />
+        </div>
+
+        {/* View full profile link */}
+        <button
+          type="button"
+          data-ocid="personnel.demo_view_profile.button"
+          onClick={onViewProfile}
+          className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-amber-500/70 transition-colors hover:text-amber-500"
+        >
+          <ExternalLink className="h-3 w-3" />
+          View Full Profile
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main PersonnelPage ───────────────────────────────────────────────────────
 
 export default function PersonnelPage() {
   const { actor, isFetching } = useActor();
   const { isS2Admin } = usePermissions();
   const { identity } = useInternetIdentity();
+  const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [clearanceFilter, setClearanceFilter] = useState("all");
@@ -1055,29 +1186,38 @@ export default function PersonnelPage() {
               <TabsContent value="directory">
                 {isLoading ? (
                   <PersonnelSkeleton />
-                ) : filteredProfiles.length === 0 ? (
-                  <div data-ocid="personnel.empty_state">
-                    <EmptyState
-                      icon={<Users />}
-                      message={
-                        searchQuery || clearanceFilter !== "all"
-                          ? "No personnel match your filters"
-                          : "No personnel registered"
-                      }
-                      className="mt-12"
-                    />
-                  </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {filteredProfiles.map((profile, idx) => (
-                      <PersonnelCard
-                        key={profile.principalId.toString()}
-                        profile={profile}
-                        index={idx + 1}
-                        isS2Admin={isS2Admin}
-                        onEdit={handleEdit}
-                      />
-                    ))}
+                    {/* Demo preview card — always shown at top */}
+                    <DemoPersonnelCard
+                      isS2Admin={isS2Admin}
+                      onViewProfile={() =>
+                        void navigate({ to: "/profile-preview" })
+                      }
+                    />
+                    {filteredProfiles.length === 0 ? (
+                      <div
+                        data-ocid="personnel.empty_state"
+                        className="col-span-full flex flex-col items-center py-12"
+                      >
+                        <Users className="mb-3 h-8 w-8 text-slate-700" />
+                        <p className="font-mono text-xs uppercase tracking-wider text-slate-600">
+                          {searchQuery || clearanceFilter !== "all"
+                            ? "No personnel match your filters"
+                            : "No personnel registered"}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredProfiles.map((profile, idx) => (
+                        <PersonnelCard
+                          key={profile.principalId.toString()}
+                          profile={profile}
+                          index={idx + 1}
+                          isS2Admin={isS2Admin}
+                          onEdit={handleEdit}
+                        />
+                      ))
+                    )}
                   </div>
                 )}
               </TabsContent>
@@ -1096,29 +1236,38 @@ export default function PersonnelPage() {
             <>
               {isLoading ? (
                 <PersonnelSkeleton />
-              ) : filteredProfiles.length === 0 ? (
-                <div data-ocid="personnel.empty_state">
-                  <EmptyState
-                    icon={<Users />}
-                    message={
-                      searchQuery || clearanceFilter !== "all"
-                        ? "No personnel match your filters"
-                        : "No personnel registered"
-                    }
-                    className="mt-12"
-                  />
-                </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {filteredProfiles.map((profile, idx) => (
-                    <PersonnelCard
-                      key={profile.principalId.toString()}
-                      profile={profile}
-                      index={idx + 1}
-                      isS2Admin={isS2Admin}
-                      onEdit={handleEdit}
-                    />
-                  ))}
+                  {/* Demo preview card — always shown at top */}
+                  <DemoPersonnelCard
+                    isS2Admin={isS2Admin}
+                    onViewProfile={() =>
+                      void navigate({ to: "/profile-preview" })
+                    }
+                  />
+                  {filteredProfiles.length === 0 ? (
+                    <div
+                      data-ocid="personnel.empty_state"
+                      className="col-span-full flex flex-col items-center py-12"
+                    >
+                      <Users className="mb-3 h-8 w-8 text-slate-700" />
+                      <p className="font-mono text-xs uppercase tracking-wider text-slate-600">
+                        {searchQuery || clearanceFilter !== "all"
+                          ? "No personnel match your filters"
+                          : "No personnel registered"}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredProfiles.map((profile, idx) => (
+                      <PersonnelCard
+                        key={profile.principalId.toString()}
+                        profile={profile}
+                        index={idx + 1}
+                        isS2Admin={isS2Admin}
+                        onEdit={handleEdit}
+                      />
+                    ))
+                  )}
                 </div>
               )}
             </>

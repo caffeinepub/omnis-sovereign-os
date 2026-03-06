@@ -4,7 +4,6 @@ import { RankSelector } from "@/components/shared/RankSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName } from "@/lib/utils";
@@ -15,7 +14,6 @@ import { useState } from "react";
 export default function RegistrationGatePage() {
   const { actor } = useActor();
   const { identity } = useInternetIdentity();
-  const { refreshProfile } = usePermissions();
   const navigate = useNavigate();
 
   const [branch, setBranch] = useState("");
@@ -119,7 +117,6 @@ export default function RegistrationGatePage() {
         }
       }
 
-      await refreshProfile();
       void navigate({ to: "/onboarding" });
     } catch (err) {
       const msg =
