@@ -7,8 +7,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export default function LoginPage() {
-  const { login, identity, isLoggingIn, isInitializing, isLoginError } =
-    useInternetIdentity();
+  const { login, identity, isLoggingIn, isLoginError } = useInternetIdentity();
   const { actor, isFetching } = useActor();
   const navigate = useNavigate();
   const [warpActive, setWarpActive] = useState(false);
@@ -22,24 +21,38 @@ export default function LoginPage() {
     setCheckingProfile(false);
   }, []);
 
-  // After auth success + actor ready — check profile and navigate.
-  // Uses a ref-based latch so this runs exactly once per mount cycle
-  // regardless of how many times the effect re-evaluates.
+  // Navigate as soon as we have an actor that is authenticated (non-anonymous principal).
+  // This handles both:
+  //   (a) fresh II login — identity is set, actor is created with it
+  //   (b) stored session on page load — actor is ready with the stored identity
+  // We do NOT rely on loginStatus because the init effect in useInternetIdentity
+  // always resets it to "idle" in its finally block, regardless of auth state.
   useEffect(() => {
-    // Only proceed when we have both identity and a ready actor
-    if (!identity || !actor || isFetching) return;
-    // Ref latch prevents double-fire
+    if (isFetching || !actor) return;
     if (hasNavigated.current) return;
 
-    hasNavigated.current = true;
-    setWarpActive(true);
-    setCheckingProfile(true);
-
-    const run = async () => {
+    // Determine if the actor is authenticated by checking its principal
+    const checkAuth = async () => {
       try {
+        // getMyProfile is a light call that only succeeds for a real identity.
+        // Anonymous callers get an empty/null profile with registered = false.
         const profile = await actor.getMyProfile();
-        // Warp plays for at least 2.5 seconds
-        await new Promise((res) => setTimeout(res, 2500));
+
+        // If no identity is available yet, don't proceed — wait for actor refresh
+        if (!identity && !profile) return;
+
+        // If profile came back but there is no non-anonymous identity, skip.
+        // This guards the anonymous actor case.
+        if (!identity) return;
+        if (identity.getPrincipal().isAnonymous()) return;
+
+        hasNavigated.current = true;
+        setWarpActive(true);
+        setCheckingProfile(true);
+
+        // Warp plays for at least 2 seconds
+        await new Promise((res) => setTimeout(res, 2000));
+
         if (!profile || !profile.registered) {
           void navigate({ to: "/register" });
         } else if (!profile.isValidatedByCommander && !profile.isS2Admin) {
@@ -48,27 +61,22 @@ export default function LoginPage() {
           void navigate({ to: "/" });
         }
       } catch {
-        // On error, reset so the user can retry by clicking Sign In again
+        // Not authenticated or call failed — stay on login page
         hasNavigated.current = false;
         setWarpActive(false);
         setCheckingProfile(false);
       }
     };
 
-    void run();
-    // checkingProfile intentionally excluded — it is set inside this effect,
-    // not a trigger for it. Removing it prevents the double-fire loop.
+    void checkAuth();
   }, [identity, actor, isFetching, navigate]);
 
-  // Show loading when: actively logging in, initializing, or post-auth profile check.
-  // Treat "already authenticated" (isLoginError + identity present) as non-error —
-  // navigation will fire from the effect above.
-  const alreadyAuthenticated = isLoginError && !!identity;
-  const isLoading =
-    isLoggingIn ||
-    (isInitializing && !alreadyAuthenticated) ||
-    checkingProfile ||
-    warpActive;
+  // Only show loading/disabled for states we control:
+  // - actively logging in via II popup
+  // - post-auth profile check and warp animation
+  // Do NOT disable during isInitializing — that would keep the button dead
+  // while a stored session is being restored, and the effect handles auto-nav anyway.
+  const isLoading = isLoggingIn || checkingProfile || warpActive;
 
   return (
     <div
@@ -124,7 +132,16 @@ export default function LoginPage() {
         <Button
           data-ocid="login.primary_button"
           className="h-12 w-64 bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground shadow-[0_0_20px_oklch(0.72_0.175_70_/_0.4)] transition-all duration-300 hover:bg-primary/90 hover:shadow-[0_0_30px_oklch(0.72_0.175_70_/_0.6)] disabled:opacity-50"
-          onClick={login}
+          onClick={() => {
+            // If the hook already has an identity (stored session), or if it
+            // errored because "already authenticated", the effect above will
+            // auto-navigate. Force a re-check by resetting the latch.
+            if (identity || isLoginError) {
+              hasNavigated.current = false;
+              return;
+            }
+            login();
+          }}
           disabled={isLoading}
         >
           {isLoading ? (
