@@ -1,6 +1,7 @@
 import { SessionExpiredModal } from "@/components/auth/SessionExpiredModal";
 import { SessionWarningDialog } from "@/components/auth/SessionWarningDialog";
 import { CommanderValidationBanner } from "@/components/layout/CommanderValidationBanner";
+import { NetworkModeProvider } from "@/contexts/NetworkModeContext";
 import {
   PermissionsProvider,
   usePermissions,
@@ -43,6 +44,7 @@ const OnboardingPage = lazy(() => import("@/pages/OnboardingPage"));
 const PendingVerificationPage = lazy(
   () => import("@/pages/PendingVerificationPage"),
 );
+const NetworkModeSetupPage = lazy(() => import("@/pages/NetworkModeSetupPage"));
 
 // --- Page loader ---
 function PageLoader() {
@@ -137,7 +139,11 @@ function MonitoringPage() {
 
 // --- Route definitions ---
 const rootRoute = createRootRoute({
-  component: () => <Outlet />,
+  component: () => (
+    <NetworkModeProvider>
+      <Outlet />
+    </NetworkModeProvider>
+  ),
 });
 
 const loginRoute = createRoute({
@@ -356,12 +362,23 @@ const pendingRoute = createRoute({
   ),
 });
 
+const networkModeSetupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/network-mode-setup",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <NetworkModeSetupPage />
+    </Suspense>
+  ),
+});
+
 // --- Route tree ---
 const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   onboardingRoute,
   pendingRoute,
+  networkModeSetupRoute,
   authRoute.addChildren([
     hubRoute,
     validateCommanderRoute,

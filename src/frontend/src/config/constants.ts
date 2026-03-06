@@ -275,3 +275,94 @@ export const THEME = {
   slate: "#1a2235",
   amber: "#f59e0b",
 } as const;
+
+// ─── Network Mode ─────────────────────────────────────────────────────────────
+
+export type NetworkMode =
+  | "military-nipr"
+  | "military-sipr"
+  | "corporate-standard"
+  | "corporate-secure";
+
+export interface NetworkModeConfig {
+  mode: NetworkMode;
+  shortCode: string;
+  label: string;
+  group: "military" | "corporate";
+  description: string;
+  classificationTerms: {
+    level0: string;
+    level1: string;
+    level2: string;
+    level3: string;
+    level4: string;
+  };
+  monitoringSensitivity: "standard" | "elevated" | "high" | "maximum";
+}
+
+export const NETWORK_MODE_CONFIGS: Record<NetworkMode, NetworkModeConfig> = {
+  "military-nipr": {
+    mode: "military-nipr",
+    shortCode: "NIPR",
+    label: "Military — NIPR",
+    group: "military",
+    description:
+      "Non-classified Internet Protocol Router network. Handles UNCLASSIFIED and CUI/FOUO information.",
+    classificationTerms: {
+      level0: "Unclassified",
+      level1: "CUI / FOUO",
+      level2: "Secret",
+      level3: "Top Secret",
+      level4: "TS/SCI",
+    },
+    monitoringSensitivity: "elevated",
+  },
+  "military-sipr": {
+    mode: "military-sipr",
+    shortCode: "SIPR",
+    label: "Military — SIPR",
+    group: "military",
+    description:
+      "Secret Internet Protocol Router network. All data treated as at minimum Secret. Highest monitoring sensitivity.",
+    classificationTerms: {
+      level0: "Unclassified (local)",
+      level1: "CUI",
+      level2: "Secret",
+      level3: "Top Secret",
+      level4: "TS/SCI",
+    },
+    monitoringSensitivity: "maximum",
+  },
+  "corporate-standard": {
+    mode: "corporate-standard",
+    shortCode: "STANDARD",
+    label: "Corporate — Standard",
+    group: "corporate",
+    description:
+      "Standard corporate deployment. Uses business-appropriate data classification tiers.",
+    classificationTerms: {
+      level0: "Public",
+      level1: "Internal",
+      level2: "Confidential",
+      level3: "Restricted",
+      level4: "Eyes Only",
+    },
+    monitoringSensitivity: "standard",
+  },
+  "corporate-secure": {
+    mode: "corporate-secure",
+    shortCode: "SECURE",
+    label: "Corporate — Secure",
+    group: "corporate",
+    description:
+      "Secure corporate deployment for regulated industries. Elevated monitoring and stricter access controls.",
+    classificationTerms: {
+      level0: "Public",
+      level1: "Internal",
+      level2: "Confidential",
+      level3: "Restricted",
+      level4: "Eyes Only",
+    },
+    monitoringSensitivity: "elevated",
+  },
+};

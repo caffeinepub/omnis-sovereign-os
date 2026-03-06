@@ -20,6 +20,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NETWORK_MODE_CONFIGS } from "@/config/constants";
+import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
@@ -327,6 +329,7 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
 
 export function TopNav() {
   const { profile, isS2Admin } = usePermissions();
+  const { mode: networkMode } = useNetworkMode();
   const { clear, identity } = useInternetIdentity();
   const { actor, isFetching } = useActor();
   const navigate = useNavigate();
@@ -530,6 +533,26 @@ export function TopNav() {
               Sovereign OS
             </span>
           </Link>
+
+          {/* Network mode badge — shown when mode is configured */}
+          {networkMode && (
+            <span
+              className="rounded border px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest"
+              style={{
+                borderColor: networkMode.startsWith("military")
+                  ? "rgba(59,130,246,0.4)"
+                  : "rgba(139,92,246,0.4)",
+                color: networkMode.startsWith("military")
+                  ? "#60a5fa"
+                  : "#a78bfa",
+                backgroundColor: networkMode.startsWith("military")
+                  ? "rgba(59,130,246,0.08)"
+                  : "rgba(139,92,246,0.08)",
+              }}
+            >
+              {NETWORK_MODE_CONFIGS[networkMode]?.shortCode ?? ""}
+            </span>
+          )}
 
           {/* Hub dropdown — immediately right of logo */}
           <DropdownMenu>

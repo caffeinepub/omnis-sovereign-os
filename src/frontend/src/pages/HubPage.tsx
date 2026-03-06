@@ -2,6 +2,7 @@ import { UserRole } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
@@ -20,6 +21,7 @@ import {
   Mail,
   Megaphone,
   MessageSquare,
+  Network,
   Settings,
   Shield,
   ShieldCheck,
@@ -174,6 +176,7 @@ const tileVariants: Variants = {
 export default function HubPage() {
   const { clearanceLevel, isS2Admin, profile, refreshProfile } =
     usePermissions();
+  const { isSet: networkModeIsSet } = useNetworkMode();
   const { actor } = useActor();
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
@@ -187,6 +190,7 @@ export default function HubPage() {
   const [showClaimPanel, setShowClaimPanel] = useState(false);
   const [claimCode, setClaimCode] = useState("");
   const [isClaiming, setIsClaiming] = useState(false);
+  const [networkModeDismissed, setNetworkModeDismissed] = useState(false);
 
   // Check if the caller has the admin role but hasn't been flagged as S2 admin yet
   useEffect(() => {
@@ -451,6 +455,60 @@ export default function HubPage() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Network Mode banner — shown to S2 admins when mode not configured */}
+          <AnimatePresence>
+            {isS2Admin && !networkModeIsSet && !networkModeDismissed && (
+              <motion.div
+                data-ocid="hub.network_mode_banner"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="mb-5 flex flex-col gap-3 rounded border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                style={{
+                  backgroundColor: "rgba(59,130,246,0.06)",
+                  borderColor: "rgba(59,130,246,0.35)",
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <Network
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    style={{ color: "#60a5fa" }}
+                  />
+                  <div>
+                    <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-blue-400">
+                      Network mode not configured
+                    </p>
+                    <p className="mt-0.5 font-mono text-xs leading-relaxed text-slate-400">
+                      Configure the deployment network type (NIPR, SIPR, or
+                      Corporate) to enable classification labels and monitoring
+                      sensitivity settings.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    data-ocid="hub.network_mode_banner.configure_button"
+                    onClick={() => void navigate({ to: "/network-mode-setup" })}
+                    className="rounded border border-blue-500/40 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-widest text-blue-400 transition-colors hover:bg-blue-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                  >
+                    Configure Now
+                  </button>
+                  <button
+                    type="button"
+                    data-ocid="hub.network_mode_banner.close_button"
+                    onClick={() => setNetworkModeDismissed(true)}
+                    className="text-slate-600 transition-colors hover:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    aria-label="Dismiss"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

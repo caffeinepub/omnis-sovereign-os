@@ -1,15 +1,16 @@
 import { TopNav } from "@/components/layout/TopNav";
 import { Badge } from "@/components/ui/badge";
-import { CLEARANCE_LABELS } from "@/config/constants";
+import { CLEARANCE_LABELS, NETWORK_MODE_CONFIGS } from "@/config/constants";
+import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  AlertCircle,
   Building2,
   ChevronRight,
   Clock,
-  Eye,
+  Globe,
   Lock,
-  Monitor,
   Settings,
   Shield,
   User,
@@ -20,16 +21,19 @@ function SectionCard({
   title,
   children,
   badge,
+  "data-ocid": dataOcid,
 }: {
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
   badge?: string;
+  "data-ocid"?: string;
 }) {
   return (
     <div
       className="rounded border"
       style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+      data-ocid={dataOcid}
     >
       {/* Card header */}
       <div
@@ -90,9 +94,17 @@ function FieldRow({
   );
 }
 
+const SENSITIVITY_LABELS: Record<string, { label: string; color: string }> = {
+  standard: { label: "Standard", color: "#64748b" },
+  elevated: { label: "Elevated", color: "#f59e0b" },
+  high: { label: "High", color: "#f97316" },
+  maximum: { label: "Maximum", color: "#ef4444" },
+};
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { profile, clearanceLevel, isS2Admin } = usePermissions();
+  const { mode: networkMode, isSet: networkModeIsSet } = useNetworkMode();
 
   const clearanceLabel =
     CLEARANCE_LABELS[clearanceLevel] ?? `Level ${clearanceLevel}`;
@@ -207,31 +219,101 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          {/* ── Display ───────────────────────────────────────────────── */}
+          {/* ── Network Mode ──────────────────────────────────────────── */}
           <SectionCard
-            icon={<Monitor className="h-4 w-4" />}
-            title="Display"
-            badge="Coming Soon"
+            icon={<Globe className="h-4 w-4" />}
+            title="Network Mode"
+            data-ocid="settings.network_mode.card"
           >
-            <div>
-              <FieldRow label="Theme" value="Dark — Military (fixed)" />
-              <FieldRow label="Font" value="Geist Mono / JetBrains Mono" />
-              <FieldRow label="Density" value="Compact" />
-            </div>
-            <div
-              className="mt-4 flex items-start gap-2 rounded border px-3 py-2.5"
-              style={{
-                backgroundColor: "rgba(100,116,139,0.06)",
-                borderColor: "#1a2235",
-              }}
-            >
-              <Eye className="h-3.5 w-3.5 shrink-0 text-slate-500 mt-0.5" />
-              <p className="font-mono text-[10px] leading-relaxed text-slate-500">
-                Display customization (theme selection, layout density, font
-                scaling) is planned. The current dark military theme is fixed
-                for all users.
-              </p>
-            </div>
+            {networkModeIsSet && networkMode ? (
+              <>
+                {(() => {
+                  const config = NETWORK_MODE_CONFIGS[networkMode];
+                  const isMilitary = config.group === "military";
+                  const accentColor = isMilitary ? "#60a5fa" : "#a78bfa";
+                  const accentBg = isMilitary
+                    ? "rgba(59,130,246,0.08)"
+                    : "rgba(139,92,246,0.08)";
+                  const accentBorder = isMilitary
+                    ? "rgba(59,130,246,0.3)"
+                    : "rgba(139,92,246,0.3)";
+                  const sensitivity =
+                    SENSITIVITY_LABELS[config.monitoringSensitivity];
+                  return (
+                    <div>
+                      <div className="mb-3 flex items-center gap-3">
+                        <span
+                          className="rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em]"
+                          style={{
+                            backgroundColor: accentBg,
+                            color: accentColor,
+                            border: `1px solid ${accentBorder}`,
+                          }}
+                        >
+                          {config.shortCode}
+                        </span>
+                        <span className="font-mono text-xs font-semibold uppercase tracking-widest text-white">
+                          {config.label}
+                        </span>
+                      </div>
+                      <p className="mb-3 font-mono text-[11px] leading-relaxed text-slate-400">
+                        {config.description}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-600">
+                          Monitoring Sensitivity:
+                        </span>
+                        <span
+                          className="font-mono text-[9px] uppercase tracking-widest font-semibold"
+                          style={{ color: sensitivity.color }}
+                        >
+                          {sensitivity.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {isS2Admin && (
+                  <button
+                    type="button"
+                    data-ocid="settings.network_mode.change_button"
+                    onClick={() => void navigate({ to: "/network-mode-setup" })}
+                    className="mt-4 flex items-center gap-2 rounded border px-4 py-2 font-mono text-xs uppercase tracking-widest text-amber-400 transition-colors hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+                    style={{ borderColor: "rgba(245,158,11,0.3)" }}
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    Change Mode
+                  </button>
+                )}
+              </>
+            ) : (
+              <div
+                className="flex items-start gap-2.5 rounded border px-3 py-2.5"
+                style={{
+                  backgroundColor: "rgba(245,158,11,0.05)",
+                  borderColor: "rgba(245,158,11,0.25)",
+                }}
+              >
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <div>
+                  <p className="font-mono text-[10px] leading-relaxed text-amber-400/80">
+                    Network mode not configured. Contact your S2 admin.
+                  </p>
+                  {isS2Admin && (
+                    <button
+                      type="button"
+                      data-ocid="settings.network_mode.change_button"
+                      onClick={() =>
+                        void navigate({ to: "/network-mode-setup" })
+                      }
+                      className="mt-2 font-mono text-[10px] uppercase tracking-widest text-amber-500 underline underline-offset-2 transition-colors hover:text-amber-400 focus-visible:outline focus-visible:outline-2"
+                    >
+                      Configure Now →
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </SectionCard>
 
           {/* ── Organization ──────────────────────────────────────────── */}

@@ -1,47 +1,43 @@
-# Omnis Sovereign OS
+# Omnis Sovereign OS — Step B: Network Mode Selector
 
 ## Current State
 
-The onboarding flow is complete: new users register, complete the 3-step onboarding wizard (org selection), and land on the pending verification page. The PersonnelPage has an "Onboarding Queue" tab (S2 only) that lists users with `isValidatedByCommander = false && !isS2Admin` and shows a "Verify & Activate" button that calls `validateS2Admin`. However, this workflow has a critical gap:
+The platform has no concept of deployment network mode. All users see identical UI terminology regardless of whether they are a military unit (NIPR/SIPR) or a corporate organization (Standard/Secure). Network mode was discussed in planning as a key differentiator but has never been implemented.
 
-- The S2 **cannot deny** a user — only approve
-- There is **no deny flow with a reason**
-- There is **no in-app notification to the user** upon approval or denial
-- The pending user has **no way to know their status changed** except by refreshing
-- S2 has **no way to see what organization a user requested** — the request is stored in localStorage only, not surfaced in the queue
+The codebase has:
+- No NetworkMode type or context
+- No first-run setup flow for selecting mode
+- All classification/clearance labels hardcoded as UNCLASSIFIED, CUI, SECRET, TOP SECRET, TS/SCI
+- No storage or retrieval of mode preference
+- Settings page has a static "Display" section with no mode control
+- Governance and Settings pages are functional stubs
 
 ## Requested Changes (Diff)
 
 ### Add
-- Deny action with a reason input on each queue row (alongside "Verify & Activate")
-- Deny confirmation dialog: reason text input (required), confirm deny button
-- On approval: create an in-app notification to the approved user (via `createSystemNotification`) confirming activation
-- On denial: create an in-app notification to the denied user explaining they were denied and why, with instruction to contact their S2
-- "Requested Org" column in the onboarding queue table, sourced from `localStorage` (`omnis_org_request_<principalId>`)
-- Visual status badges on queue rows: "Pending" (amber pulse), differentiated from future "Denied" state
-- Denial creates a localStorage record (`omnis_denial_<principalId>`) so PendingVerificationPage can detect and show denial messaging
+- `NetworkModeContext` — React context providing the current network mode (`military-nipr` | `military-sipr` | `corporate-standard` | `corporate-secure`) and a setter. Persisted to `localStorage` under `omnis_network_mode`.
+- `NetworkModeSetupPage` — A first-run/S2-accessible page (`/network-mode-setup`) where an S2 admin or the system owner can select the deployment network mode. Shows the four options with descriptions, visual distinction between Military and Corporate groups. Not nested under AuthenticatedLayout (accessible during initial setup). Also accessible from Settings for S2 admins post-setup.
+- Network mode display badge in `TopNav` — a small pill badge next to the OMNIS wordmark showing the current mode (e.g., `NIPR`, `SIPR`, `STANDARD`, `SECURE`). Hidden if mode is not yet set.
+- `useNetworkMode` hook — convenience wrapper for the context.
+- Network mode card in `SettingsPage` — shows the current mode, what it means, and (for S2 admins) a link to change it.
 
 ### Modify
-- `OnboardingQueue` component: add Deny button + requested org column + notification calls on both approve and deny
-- `PendingVerificationPage`: check for denial record in localStorage; if present, show a distinct "Access Denied" state with the denial reason and instruction to contact S2
-- Queue table column layout: expand from 5 columns to 6 (add Org Request)
+- `constants.ts` — Add `NETWORK_MODE_LABELS`, `NETWORK_MODE_DESCRIPTIONS`, and a `getNetworkModeConfig(mode)` helper that returns the adapted terminology for classification labels, jargon, and monitoring sensitivity.
+- `SettingsPage` — Replace the static Display section content with a live Network Mode section showing mode-aware terminology. Add "Change Mode" link for S2 admins.
+- `Router.tsx` — Add `/network-mode-setup` route (outside of authRoute, like `/register`).
+- `LoginPage.tsx` / first-run flow — After completing registration, if no network mode is set, route to `/network-mode-setup` before onboarding. S2 admins can also access it from Settings.
+- `HubPage.tsx` — Show a one-time banner prompting S2 admin to set network mode if it hasn't been configured yet.
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
 
-1. Update `OnboardingQueue` in `PersonnelPage.tsx`:
-   - Add "Org Request" column reading from `localStorage`
-   - Add "Deny" button per row (red-tinted, beside Verify & Activate)
-   - Add deny confirmation dialog with reason `<Input>` (required before confirming)
-   - On verify: after `validateS2Admin`, call `createSystemNotification` to the approved user with type "access_request", title "Access Approved", body confirming activation
-   - On deny: write denial record to localStorage, call `createSystemNotification` to the denied user with title "Access Denied" and the reason
-   - Invalidate query after deny same as after verify
-
-2. Update `PendingVerificationPage.tsx`:
-   - On mount, check `localStorage` for `omnis_denial_<principalId>`
-   - If found: show "Access Denied" state with reason text and "Contact your S2 or security officer" instruction; show a "Request Review" button that clears the denial record and returns to onboarding
-   - If not found: show existing "Pending Verification" state (unchanged)
-
-3. Add `data-ocid` markers to all new interactive surfaces (deny button, deny dialog, reason input, confirm/cancel, request review button)
+1. Add `NetworkModeContext.tsx` with four mode values, descriptions, localStorage persistence, and a `useNetworkMode` hook.
+2. Update `constants.ts` to add `NETWORK_MODE_CONFIGS` with Military NIPR, Military SIPR, Corporate Standard, Corporate Secure configs — each containing a label, short code, description, and classification terminology override.
+3. Build `NetworkModeSetupPage.tsx` — clean selection UI with two groups (Military, Corporate), mode cards, and a confirm button. Routes to `/onboarding` on completion.
+4. Add `/network-mode-setup` route to `Router.tsx` (outside authRoute).
+5. Add network mode badge to `TopNav` (beside OMNIS wordmark).
+6. Add network mode section to `SettingsPage` with current mode display and S2 admin change link.
+7. Add hub banner to `HubPage.tsx` prompting S2 admin to configure network mode if unset.
+8. Validate and build.
