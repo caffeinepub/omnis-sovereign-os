@@ -4,6 +4,14 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormError } from "@/components/shared/FormError";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { formatRelativeTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { useSearch } from "@tanstack/react-router";
 import {
@@ -41,19 +50,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatRelativeTime(ts: bigint): string {
-  const ms = Number(ts);
-  const date = ms > 1e15 ? new Date(ms / 1_000_000) : new Date(ms);
-  const now = Date.now();
-  const diff = now - date.getTime();
-
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function formatFullDate(ts: bigint): string {
   const ms = Number(ts);
@@ -751,6 +747,31 @@ export default function MessagesPage() {
       style={{ backgroundColor: "#0a0e1a" }}
     >
       <TopNav />
+
+      {/* Breadcrumb */}
+      <nav
+        className="border-b px-6 py-2.5"
+        style={{ borderColor: "#1a2235", backgroundColor: "#0a0e1a" }}
+      >
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="/"
+                className="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300"
+              >
+                Hub
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="text-slate-700" />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                Messaging
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </nav>
 
       {/* Compose modal */}
       {actor && callerPrincipal && (

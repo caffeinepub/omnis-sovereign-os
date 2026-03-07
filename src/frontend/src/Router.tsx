@@ -1,13 +1,13 @@
-import { SessionExpiredModal } from "@/components/auth/SessionExpiredModal";
 import { SessionWarningDialog } from "@/components/auth/SessionWarningDialog";
 import { CommanderValidationBanner } from "@/components/layout/CommanderValidationBanner";
+import { CommandPalette } from "@/components/shared/CommandPalette";
 import { NetworkModeProvider } from "@/contexts/NetworkModeContext";
 import {
   PermissionsProvider,
   usePermissions,
 } from "@/contexts/PermissionsContext";
+import { useIdleTimer } from "@/hooks/useIdleTimer";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { useSessionGuard } from "@/hooks/useSessionGuard";
 import {
   Outlet,
   RouterProvider,
@@ -16,7 +16,7 @@ import {
   createRouter,
   useRouter,
 } from "@tanstack/react-router";
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 
 // Lazy-loaded pages
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
@@ -45,6 +45,11 @@ const PendingVerificationPage = lazy(
   () => import("@/pages/PendingVerificationPage"),
 );
 const NetworkModeSetupPage = lazy(() => import("@/pages/NetworkModeSetupPage"));
+const TestLabPage = lazy(() => import("@/pages/TestLabPage"));
+const MyProfilePage = lazy(() => import("@/pages/MyProfilePage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const WorkspaceSetupPage = lazy(() => import("@/pages/WorkspaceSetupPage"));
+const ClaimCommanderPage = lazy(() => import("@/pages/ClaimCommanderPage"));
 
 // --- Page loader ---
 function PageLoader() {
@@ -65,8 +70,11 @@ function AuthenticatedLayout() {
   const { identity, isInitializing, isLoginIdle, clear } =
     useInternetIdentity();
   const router = useRouter();
-  const { showWarning, showExpired, handleStayLoggedIn, handleExpiredSignIn } =
-    useSessionGuard();
+
+  // Idle warning state driven by useIdleTimer
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+
+  const isAuthenticated = !!identity && !identity.getPrincipal().isAnonymous();
 
   // Hard-reload logout: call authClient.logout() then immediately navigate to
   // /login via window.location so the entire React tree (including the
@@ -78,10 +86,31 @@ function AuthenticatedLayout() {
     window.location.href = "/login";
   };
 
+  // Idle timer — only active while a real (non-anonymous) identity is present.
+  // Warns at 20 min, expires at 22 min. Wires into the existing
+  // SessionWarningDialog via showIdleWarning state.
+  useIdleTimer({
+    onWarn: () => {
+      if (isAuthenticated) setShowIdleWarning(true);
+    },
+    onExpire: () => {
+      if (isAuthenticated) {
+        setShowIdleWarning(false);
+        clear();
+        window.location.href = "/login";
+      }
+    },
+    warnAfterMs: 20 * 60 * 1000,
+    expireAfterMs: 22 * 60 * 1000,
+  });
+
   useEffect(() => {
     // Redirect to login if: not initializing AND no identity present
     // This covers both the normal logout case and the post-clear idle state
-    if (!isInitializing && !identity) {
+    if (
+      !isInitializing &&
+      (!identity || identity.getPrincipal().isAnonymous())
+    ) {
       void router.navigate({ to: "/login" });
     }
   }, [identity, isInitializing, router]);
@@ -108,12 +137,13 @@ function AuthenticatedLayout() {
     <PermissionsProvider>
       <CommanderValidationBanner />
       <Outlet />
+      <CommandPalette />
+      {/* Idle warning from useIdleTimer (20-min inactivity) */}
       <SessionWarningDialog
-        open={showWarning}
-        onStayLoggedIn={handleStayLoggedIn}
+        open={showIdleWarning}
+        onStayLoggedIn={() => setShowIdleWarning(false)}
         onLogOut={handleLogOut}
       />
-      {showExpired && <SessionExpiredModal onSignIn={handleExpiredSignIn} />}
     </PermissionsProvider>
   );
 }
@@ -133,6 +163,42 @@ function MonitoringPage() {
   return (
     <Suspense fallback={<PageLoader />}>
       <AccessMonitoringPage />
+    </Suspense>
+  );
+}
+
+// --- Profile Preview guard (S2 only) ---
+function ProfilePreviewGuard() {
+  const { isS2Admin, isLoading } = usePermissions();
+  const router = useRouter();
+  useEffect(() => {
+    if (!isLoading && !isS2Admin) {
+      void router.navigate({ to: "/personnel" });
+    }
+  }, [isS2Admin, isLoading, router]);
+  if (isLoading || !isS2Admin) return <PageLoader />;
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <ProfilePreviewPage />
+    </Suspense>
+  );
+}
+
+// --- Admin guard (S2 only) ---
+function AdminGuard() {
+  const { isS2Admin, isLoading } = usePermissions();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isS2Admin) {
+      void router.navigate({ to: "/" });
+    }
+  }, [isS2Admin, isLoading, router]);
+
+  if (isLoading || !isS2Admin) return <PageLoader />;
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <AdminPage />
     </Suspense>
   );
 }
@@ -183,7 +249,7 @@ const registerRoute = createRoute({
 });
 
 const validateCommanderRoute = createRoute({
-  getParentRoute: () => authRoute,
+  getParentRoute: () => rootRoute,
   path: "/validate-commander",
   component: () => (
     <Suspense fallback={<PageLoader />}>
@@ -337,7 +403,57 @@ const profilePreviewRoute = createRoute({
   path: "/profile-preview",
   component: () => (
     <Suspense fallback={<PageLoader />}>
-      <ProfilePreviewPage />
+      <ProfilePreviewGuard />
+    </Suspense>
+  ),
+});
+
+const testLabRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/test-lab",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <TestLabPage />
+    </Suspense>
+  ),
+});
+
+const myProfileRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/my-profile",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <MyProfilePage />
+    </Suspense>
+  ),
+});
+
+const adminRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/admin",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <AdminGuard />
+    </Suspense>
+  ),
+});
+
+const workspaceSetupRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/workspace-setup",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <WorkspaceSetupPage />
+    </Suspense>
+  ),
+});
+
+const claimCommanderRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: "/claim-commander",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <ClaimCommanderPage />
     </Suspense>
   ),
 });
@@ -375,13 +491,13 @@ const networkModeSetupRoute = createRoute({
 // --- Route tree ---
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  registerRoute,
   onboardingRoute,
   pendingRoute,
   networkModeSetupRoute,
+  registerRoute,
+  validateCommanderRoute,
   authRoute.addChildren([
     hubRoute,
-    validateCommanderRoute,
     documentsRoute,
     messagesRoute,
     personnelRoute,
@@ -397,6 +513,11 @@ const routeTree = rootRoute.addChildren([
     governanceRoute,
     helpRoute,
     profilePreviewRoute,
+    testLabRoute,
+    myProfileRoute,
+    adminRoute,
+    workspaceSetupRoute,
+    claimCommanderRoute,
   ]),
 ]);
 

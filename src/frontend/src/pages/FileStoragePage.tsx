@@ -3,6 +3,14 @@ import { TopNav } from "@/components/layout/TopNav";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -777,6 +785,31 @@ export default function FileStoragePage() {
       style={{ backgroundColor: "#0a0e1a" }}
     >
       <TopNav />
+
+      {/* Breadcrumb */}
+      <nav
+        className="border-b px-6 py-2.5"
+        style={{ borderColor: "#1a2235", backgroundColor: "#0a0e1a" }}
+      >
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="/"
+                className="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300"
+              >
+                Hub
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="text-slate-700" />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                File Storage
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </nav>
 
       {/* Delete confirm dialog */}
       <ConfirmDialog

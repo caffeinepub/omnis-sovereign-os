@@ -7,12 +7,20 @@ import { Label } from "@/components/ui/label";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName } from "@/lib/displayName";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import {
+  AlertCircle,
+  ChevronDown,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export default function RegistrationGatePage() {
-  const { actor } = useActor();
+  const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
 
@@ -29,6 +37,52 @@ export default function RegistrationGatePage() {
   });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showBootstrapCode, setShowBootstrapCode] = useState(false);
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  const [isFirstUser, setIsFirstUser] = useState(false);
+  // Ensure the session timeout is only started once — background refetches
+  // from TanStack Query must not cancel and restart the timer.
+  const timeoutStarted = useRef(false);
+
+  // If the actor never becomes available within 20s AFTER a real identity is
+  // present, break out of the infinite spinner and show a recoverable error.
+  // We do NOT start the timeout until the user has actually authenticated via
+  // Internet Identity — otherwise a slow canister cold-start on page load would
+  // immediately show the error before the user has done anything.
+  // The timer is started only ONCE (via timeoutStarted ref) so that background
+  // refetches from TanStack Query do not cancel and restart it.
+  // actor is intentionally omitted from deps — background refetches changing actor
+  // must not cancel/restart the already-running timer (would cause a never-ending spinner).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: actor intentionally excluded to prevent timer restart on refetch
+  useEffect(() => {
+    const hasRealIdentity =
+      !!identity && !identity.getPrincipal().isAnonymous();
+    // Only start the countdown once the user has authenticated
+    if (!hasRealIdentity) return;
+    // Actor is already ready — no timeout needed
+    if (actor) return;
+    // Timer already running — don't restart on isFetching flips
+    if (timeoutStarted.current) return;
+
+    timeoutStarted.current = true;
+    const timer = setTimeout(() => {
+      setSessionTimedOut(true);
+    }, 20_000);
+
+    return () => clearTimeout(timer);
+  }, [identity]);
+
+  // Detect if this is the first user (no S2 admins exist yet)
+  useEffect(() => {
+    if (!actor || isFetching) return;
+    actor
+      .getAllProfiles()
+      .then((profiles) => {
+        const hasS2 = profiles.some((p) => p.isS2Admin);
+        setIsFirstUser(!hasS2);
+      })
+      .catch(() => setIsFirstUser(false));
+  }, [actor, isFetching]);
 
   const handleChange = (field: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -45,8 +99,17 @@ export default function RegistrationGatePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Actor may still be initializing — wait for it
+    if (isFetching) {
+      setError(
+        "System is still initializing. Please wait a moment and try again.",
+      );
+      return;
+    }
+
     if (!actor || !identity) {
-      setError("Authentication required. Please refresh and try again.");
+      setError("Session not ready. Please sign out and sign in again.");
       return;
     }
 
@@ -112,7 +175,7 @@ export default function RegistrationGatePage() {
           // Step 3: Mark as validated by commander
           await actor.validateS2Admin(principal);
         } catch {
-          // Authorization code was wrong or already used — continue as regular user
+          // Authorization code path failed — continue as regular user
           // Profile is already registered; just proceed normally
         }
       }
@@ -128,6 +191,62 @@ export default function RegistrationGatePage() {
       setIsSubmitting(false);
     }
   };
+
+  // Show a loading screen while the actor is still initializing
+  if (isFetching || !actor) {
+    // If init has stalled for too long, show a recoverable error
+    if (sessionTimedOut) {
+      return (
+        <div
+          className="flex min-h-screen flex-col items-center justify-center gap-5"
+          style={{ backgroundColor: "#0a0e1a" }}
+        >
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-full border"
+            style={{ borderColor: "#ef4444", backgroundColor: "#1a0a0a" }}
+          >
+            <ShieldAlert className="h-7 w-7" style={{ color: "#ef4444" }} />
+          </div>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <p
+              className="font-mono text-sm font-semibold uppercase tracking-widest"
+              style={{ color: "#fca5a5" }}
+            >
+              Session timed out
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">
+              Session initialization timed out. This may be a network issue.
+            </p>
+          </div>
+          <button
+            type="button"
+            data-ocid="registration.retry_button"
+            onClick={() => window.location.reload()}
+            className="flex items-center gap-2 rounded border px-4 py-2 font-mono text-xs font-semibold uppercase tracking-widest transition-colors hover:bg-red-900/30"
+            style={{ borderColor: "#ef4444", color: "#fca5a5" }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="flex min-h-screen flex-col items-center justify-center gap-4"
+        style={{ backgroundColor: "#0a0e1a" }}
+      >
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-amber bg-navy shadow-[0_0_30px_oklch(0.72_0.175_70_/_0.2)]">
+          <ShieldCheck className="h-7 w-7 text-amber" />
+        </div>
+        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-amber" />
+          Establishing secure session...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -167,6 +286,31 @@ export default function RegistrationGatePage() {
             Complete your profile to access the system
           </p>
         </div>
+
+        {/* First-user banner */}
+        {isFirstUser && (
+          <div
+            className="mb-5 flex items-start gap-3 rounded border px-4 py-3"
+            style={{
+              backgroundColor: "rgba(245,158,11,0.06)",
+              borderColor: "rgba(245,158,11,0.3)",
+            }}
+          >
+            <AlertCircle
+              className="mt-0.5 h-4 w-4 shrink-0"
+              style={{ color: "#f59e0b" }}
+            />
+            <p className="font-mono text-[10px] leading-relaxed text-amber-400/80">
+              You appear to be the first person to register on this workspace.
+              If you are the designated system administrator, complete
+              registration then click{" "}
+              <span className="font-semibold text-amber-400">
+                &lsquo;Establish Your Workspace&rsquo;
+              </span>{" "}
+              to set up the S2 role and unit.
+            </p>
+          </div>
+        )}
 
         {/* Form card */}
         <form
@@ -224,9 +368,9 @@ export default function RegistrationGatePage() {
                 </div>
               </div>
               {/* Live name preview */}
-              <p className="font-mono text-[10px] text-muted-foreground/50">
+              <p className="font-mono text-[10px] text-slate-500">
                 Will display as:{" "}
-                <span className="text-muted-foreground">
+                <span className="font-semibold text-slate-300">
                   {namePreview ||
                     `${form.rank || "RANK"} ${form.lastName.toUpperCase() || "LAST"}, ${form.firstName || "First"}${form.mi ? ` ${form.mi.toUpperCase()}` : ""}`}
                 </span>
@@ -288,27 +432,47 @@ export default function RegistrationGatePage() {
               />
             </div>
 
-            {/* Commander Authorization Code — always shown */}
-            <div className="space-y-1.5 border-t border-border pt-4">
-              <Label
-                htmlFor="reg-bootstrap"
-                className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
+            {/* Commander Authorization Code — collapsible, S2 admin only */}
+            <div className="border-t border-border pt-4">
+              <button
+                type="button"
+                data-ocid="registration.bootstrap_code.toggle"
+                className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-colors"
+                onClick={() => setShowBootstrapCode((v) => !v)}
               >
-                Commander Authorization Code{" "}
-                <span className="text-muted-foreground/50">(optional)</span>
-              </Label>
-              <Input
-                id="reg-bootstrap"
-                data-ocid="registration.bootstrap_code.input"
-                type="text"
-                value={form.bootstrapCode}
-                onChange={(e) => handleChange("bootstrapCode", e.target.value)}
-                placeholder="Provided by your commander or S2"
-                className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
-              />
-              <p className="font-mono text-xs text-muted-foreground/50">
-                Only required for initial system activation
-              </p>
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    showBootstrapCode && "rotate-180",
+                  )}
+                />
+                I am the designated S2 administrator
+              </button>
+              {showBootstrapCode && (
+                <div className="mt-3 space-y-1.5">
+                  <Label
+                    htmlFor="reg-bootstrap"
+                    className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
+                  >
+                    Commander Authorization Code{" "}
+                    <span className="text-muted-foreground/50">(optional)</span>
+                  </Label>
+                  <Input
+                    id="reg-bootstrap"
+                    data-ocid="registration.bootstrap_code.input"
+                    type="text"
+                    value={form.bootstrapCode}
+                    onChange={(e) =>
+                      handleChange("bootstrapCode", e.target.value)
+                    }
+                    placeholder="Provided by your commander or S2"
+                    className="border-input bg-secondary font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
+                  />
+                  <p className="font-mono text-xs text-muted-foreground/50">
+                    Only required for initial system activation
+                  </p>
+                </div>
+              )}
             </div>
 
             {error && <FormError message={error} />}

@@ -13,7 +13,14 @@ import type { ExtendedProfile } from "@/backend.d";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Loader2, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 // ─── Static workspace list ─────────────────────────────────────────────────
@@ -25,6 +32,17 @@ interface Workspace {
   type: string;
   category: string;
 }
+
+const UNIT_TYPES = [
+  "Battalion",
+  "Brigade",
+  "Company/Platoon",
+  "Division HQ",
+  "Corporate",
+  "Other",
+] as const;
+
+const MODES = ["Military", "Corporate"] as const;
 
 const WORKSPACES: Workspace[] = [
   {
@@ -203,9 +221,27 @@ function WorkspaceCard({
 type SubStep = "select" | "confirm";
 
 export default function OnboardingPage() {
-  const { actor } = useActor();
+  const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
+
+  // Redirect already-registered users away from onboarding
+  useEffect(() => {
+    if (!actor || isFetching) return;
+    actor
+      .getMyProfile()
+      .then((profile) => {
+        if (!profile || !profile.registered) return;
+        if (profile.isValidatedByCommander || profile.isS2Admin) {
+          void navigate({ to: "/" });
+        } else {
+          void navigate({ to: "/pending" });
+        }
+      })
+      .catch(() => {
+        /* ignore — not registered yet */
+      });
+  }, [actor, isFetching, navigate]);
 
   const [step, setStep] = useState(1);
   const [subStep, setSubStep] = useState<SubStep>("select");
@@ -216,7 +252,15 @@ export default function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submittedWorkspace, setSubmittedWorkspace] =
     useState<Workspace | null>(null);
+  const [showCustomUnit, setShowCustomUnit] = useState(false);
+  const [customUnitName, setCustomUnitName] = useState("");
   const autoAdvanced = useRef(false);
+
+  // Create workspace form state
+  const [createName, setCreateName] = useState("");
+  const [createUic, setCreateUic] = useState("");
+  const [createType, setCreateType] = useState("");
+  const [createMode, setCreateMode] = useState("");
 
   // Step 1: auto-advance after 1.5s
   useEffect(() => {
@@ -235,12 +279,45 @@ export default function OnboardingPage() {
       w.type.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const handleContinue = () => {
-    if (selectedWorkspace) setSubStep("confirm");
+  // Show "Create New Workspace" when there's a search term and no matches
+  const showCreateWorkspace =
+    searchQuery.trim().length > 0 && filteredWorkspaces.length === 0;
+
+  const canCreateWorkspace =
+    createName.trim() && createUic.trim() && createType && createMode;
+
+  const handleEstablishWorkspace = () => {
+    if (!canCreateWorkspace) return;
+    const ws = {
+      name: createName.trim(),
+      uic: createUic.trim().toUpperCase(),
+      type: createType,
+      mode: createMode,
+      createdAt: new Date().toISOString(),
+    };
+    localStorage.setItem("omnis_workspace", JSON.stringify(ws));
+    localStorage.setItem("omnis_founding_s2", "true");
+    void navigate({ to: "/validate-commander" });
   };
 
+  const handleContinue = () => {
+    if (selectedWorkspace || (showCustomUnit && customUnitName.trim()))
+      setSubStep("confirm");
+  };
+
+  const effectiveWorkspace: Workspace | null =
+    showCustomUnit && customUnitName.trim()
+      ? {
+          id: "custom",
+          name: customUnitName.trim(),
+          uic: "",
+          type: "Custom",
+          category: "Other",
+        }
+      : selectedWorkspace;
+
   const handleSubmitRequest = async () => {
-    if (!selectedWorkspace || !identity) return;
+    if (!effectiveWorkspace || !identity) return;
     setSubmitting(true);
 
     const principalId = identity.getPrincipal();
@@ -250,7 +327,7 @@ export default function OnboardingPage() {
     localStorage.setItem(
       `omnis_org_request_${principalStr}`,
       JSON.stringify({
-        workspace: selectedWorkspace.name,
+        workspace: effectiveWorkspace.name,
         requestedAt: new Date().toISOString(),
       }),
     );
@@ -271,7 +348,7 @@ export default function OnboardingPage() {
             actor.createSystemNotification({
               id: crypto.randomUUID(),
               title: "New Access Request",
-              body: `${userName} has requested access to ${selectedWorkspace.name}`,
+              body: `${userName} has requested access to ${effectiveWorkspace.name}`,
               userId: admin.principalId,
               notificationType: "access_request",
               createdAt: BigInt(Date.now()),
@@ -285,13 +362,13 @@ export default function OnboardingPage() {
       }
     }
 
-    setSubmittedWorkspace(selectedWorkspace);
+    setSubmittedWorkspace(effectiveWorkspace);
     setStep(3);
     setSubmitting(false);
   };
 
   const displayName =
-    submittedWorkspace?.name ?? selectedWorkspace?.name ?? "your organization";
+    submittedWorkspace?.name ?? effectiveWorkspace?.name ?? "your organization";
 
   return (
     <div
@@ -377,33 +454,277 @@ export default function OnboardingPage() {
               </div>
 
               {/* Workspace list */}
-              <div className="max-h-56 space-y-2 overflow-y-auto pr-0.5">
-                {filteredWorkspaces.length === 0 ? (
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-0.5">
+                {filteredWorkspaces.map((ws) => (
+                  <WorkspaceCard
+                    key={ws.id}
+                    workspace={ws}
+                    index={WORKSPACES.indexOf(ws) + 1}
+                    selected={selectedWorkspace?.id === ws.id}
+                    onSelect={() => {
+                      setSelectedWorkspace(ws);
+                      setShowCustomUnit(false);
+                      setCustomUnitName("");
+                    }}
+                  />
+                ))}
+
+                {/* Create New Workspace — appears when search has no matches */}
+                {showCreateWorkspace && (
+                  <div
+                    className="rounded border p-4 space-y-4"
+                    style={{
+                      borderColor: "rgba(245,158,11,0.4)",
+                      borderStyle: "dashed",
+                      backgroundColor: "rgba(245,158,11,0.03)",
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Plus
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                        style={{ color: "#f59e0b" }}
+                      />
+                      <div>
+                        <p
+                          className="font-mono text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: "#f59e0b" }}
+                        >
+                          Establish New Workspace
+                        </p>
+                        <p className="mt-0.5 font-mono text-[9px] leading-relaxed text-slate-500">
+                          No workspace found for &ldquo;{searchQuery}&rdquo;.
+                          You can establish a new isolated workspace below.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Warning */}
+                    <div
+                      className="flex items-start gap-2 rounded border px-3 py-2"
+                      style={{
+                        backgroundColor: "rgba(245,158,11,0.05)",
+                        borderColor: "rgba(245,158,11,0.15)",
+                      }}
+                    >
+                      <AlertTriangle
+                        className="mt-0.5 h-3 w-3 shrink-0"
+                        style={{ color: "#f59e0b" }}
+                      />
+                      <p className="font-mono text-[9px] leading-relaxed text-amber-400/70">
+                        This will create a new isolated workspace. You will be
+                        assigned as Provisional S2 Administrator.
+                      </p>
+                    </div>
+
+                    {/* Create form */}
+                    <div className="space-y-2.5">
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="create-unit-name"
+                          className="font-mono text-[9px] uppercase tracking-wider text-slate-500"
+                        >
+                          Unit Name
+                        </label>
+                        <input
+                          id="create-unit-name"
+                          data-ocid="onboarding.create.name.input"
+                          type="text"
+                          value={createName}
+                          onChange={(e) => setCreateName(e.target.value)}
+                          placeholder="1-501st PIR"
+                          className="w-full rounded border px-3 py-1.5 font-mono text-xs text-white placeholder:text-slate-600 focus:outline-none focus:ring-1"
+                          style={{
+                            backgroundColor: "#0a0e1a",
+                            borderColor: "#2a3347",
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="create-unit-uic"
+                          className="font-mono text-[9px] uppercase tracking-wider text-slate-500"
+                        >
+                          Unit Identification Code (UIC)
+                        </label>
+                        <input
+                          id="create-unit-uic"
+                          data-ocid="onboarding.create.uic.input"
+                          type="text"
+                          value={createUic}
+                          onChange={(e) =>
+                            setCreateUic(e.target.value.toUpperCase())
+                          }
+                          placeholder="WH9RT0"
+                          maxLength={8}
+                          className="w-full rounded border px-3 py-1.5 font-mono text-xs uppercase text-white placeholder:text-slate-600 focus:outline-none focus:ring-1"
+                          style={{
+                            backgroundColor: "#0a0e1a",
+                            borderColor: "#2a3347",
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="create-unit-type"
+                            className="font-mono text-[9px] uppercase tracking-wider text-slate-500"
+                          >
+                            Unit Type
+                          </label>
+                          <select
+                            id="create-unit-type"
+                            data-ocid="onboarding.create.type.select"
+                            value={createType}
+                            onChange={(e) => setCreateType(e.target.value)}
+                            className="w-full rounded border px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:ring-1"
+                            style={{
+                              backgroundColor: "#0a0e1a",
+                              borderColor: "#2a3347",
+                            }}
+                          >
+                            <option value="">Select type…</option>
+                            {UNIT_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="create-unit-mode"
+                            className="font-mono text-[9px] uppercase tracking-wider text-slate-500"
+                          >
+                            Mode
+                          </label>
+                          <select
+                            id="create-unit-mode"
+                            data-ocid="onboarding.create.mode.select"
+                            value={createMode}
+                            onChange={(e) => setCreateMode(e.target.value)}
+                            className="w-full rounded border px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:ring-1"
+                            style={{
+                              backgroundColor: "#0a0e1a",
+                              borderColor: "#2a3347",
+                            }}
+                          >
+                            <option value="">Select mode…</option>
+                            {MODES.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        data-ocid="onboarding.create.establish.primary_button"
+                        disabled={!canCreateWorkspace}
+                        onClick={handleEstablishWorkspace}
+                        className="h-9 w-full rounded font-mono text-[10px] font-semibold uppercase tracking-widest transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        style={{
+                          backgroundColor: canCreateWorkspace
+                            ? "#f59e0b"
+                            : "#1a2235",
+                          color: canCreateWorkspace ? "#0a0e1a" : "#4b5563",
+                        }}
+                      >
+                        Establish Workspace
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* No results and no search — empty list state */}
+                {!showCreateWorkspace && filteredWorkspaces.length === 0 && (
                   <p className="py-4 text-center font-mono text-[10px] text-slate-600">
-                    No workspaces match your search
+                    No workspaces found. Type a UIC or unit name to search.
                   </p>
-                ) : (
-                  filteredWorkspaces.map((ws) => (
-                    <WorkspaceCard
-                      key={ws.id}
-                      workspace={ws}
-                      index={WORKSPACES.indexOf(ws) + 1}
-                      selected={selectedWorkspace?.id === ws.id}
-                      onSelect={() => setSelectedWorkspace(ws)}
+                )}
+
+                {/* "Request Custom Access" option (was "My unit isn't listed") */}
+                <button
+                  type="button"
+                  data-ocid="onboarding.custom_unit.toggle"
+                  onClick={() => {
+                    setShowCustomUnit((v) => !v);
+                    setSelectedWorkspace(null);
+                  }}
+                  className="flex w-full items-center gap-2 rounded border px-4 py-3 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2"
+                  style={{
+                    backgroundColor: showCustomUnit
+                      ? "rgba(245,158,11,0.06)"
+                      : "transparent",
+                    borderColor: showCustomUnit
+                      ? "rgba(245,158,11,0.4)"
+                      : "#2a3347",
+                    borderStyle: "dashed",
+                  }}
+                >
+                  <ChevronDown
+                    className="h-3 w-3 transition-transform shrink-0"
+                    style={{
+                      color: "#64748b",
+                      transform: showCustomUnit
+                        ? "rotate(180deg)"
+                        : "rotate(0deg)",
+                    }}
+                  />
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    Request Custom Access
+                  </span>
+                </button>
+
+                {showCustomUnit && (
+                  <div
+                    className="space-y-2 rounded border px-4 py-3"
+                    style={{
+                      backgroundColor: "#0a111f",
+                      borderColor: "#1e2d45",
+                    }}
+                  >
+                    <input
+                      data-ocid="onboarding.custom_unit.input"
+                      type="text"
+                      value={customUnitName}
+                      onChange={(e) => setCustomUnitName(e.target.value)}
+                      placeholder="Enter your unit or organization name..."
+                      className="w-full rounded border bg-transparent py-2 px-3 font-mono text-xs text-white placeholder:text-slate-600 focus:outline-none focus:ring-1"
+                      style={{ borderColor: "#2a3347" }}
                     />
-                  ))
+                    <p className="font-mono text-[9px] leading-relaxed text-slate-600">
+                      Submit a custom access request. Your S2 admin will review
+                      your request.
+                    </p>
+                  </div>
                 )}
               </div>
 
               <button
                 type="button"
                 data-ocid="onboarding.continue_button"
-                disabled={!selectedWorkspace}
+                disabled={
+                  !selectedWorkspace &&
+                  !(showCustomUnit && customUnitName.trim())
+                }
                 onClick={handleContinue}
                 className="mt-2 h-10 w-full rounded font-mono text-xs font-semibold uppercase tracking-widest transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
-                  backgroundColor: selectedWorkspace ? "#f59e0b" : "#1a2235",
-                  color: selectedWorkspace ? "#0a0e1a" : "#4b5563",
+                  backgroundColor:
+                    selectedWorkspace ||
+                    (showCustomUnit && customUnitName.trim())
+                      ? "#f59e0b"
+                      : "#1a2235",
+                  color:
+                    selectedWorkspace ||
+                    (showCustomUnit && customUnitName.trim())
+                      ? "#0a0e1a"
+                      : "#4b5563",
                 }}
               >
                 Continue
@@ -438,11 +759,17 @@ export default function OnboardingPage() {
                   className="mt-1 font-mono text-sm font-bold uppercase tracking-wider"
                   style={{ color: "#f59e0b" }}
                 >
-                  {selectedWorkspace?.name}
+                  {effectiveWorkspace?.name}
                 </p>
-                {selectedWorkspace?.uic && (
+                {effectiveWorkspace?.uic && (
                   <p className="mt-0.5 font-mono text-[10px] text-slate-500">
-                    UIC: {selectedWorkspace.uic} · {selectedWorkspace.type}
+                    UIC: {effectiveWorkspace.uic} · {effectiveWorkspace.type}
+                  </p>
+                )}
+                {showCustomUnit && (
+                  <p className="mt-1 font-mono text-[9px] text-slate-600">
+                    Custom workspace — will be created when your S2 admin
+                    activates the system.
                   </p>
                 )}
               </div>

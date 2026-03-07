@@ -5,6 +5,14 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { FormError } from "@/components/shared/FormError";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
 import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -1345,6 +1353,31 @@ export default function AccessMonitoringPage() {
       style={{ backgroundColor: "#0a0e1a" }}
     >
       <TopNav />
+
+      {/* Breadcrumb */}
+      <nav
+        className="border-b px-6 py-2.5"
+        style={{ borderColor: "#1a2235", backgroundColor: "#0a0e1a" }}
+      >
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="/"
+                className="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300"
+              >
+                Hub
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="text-slate-700" />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                Access Monitoring
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </nav>
 
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl space-y-5">

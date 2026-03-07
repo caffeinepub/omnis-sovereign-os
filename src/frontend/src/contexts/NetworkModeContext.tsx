@@ -41,6 +41,9 @@ export function NetworkModeProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(STORAGE_KEY);
     } else {
       localStorage.setItem(STORAGE_KEY, next);
+      console.warn(
+        "[OMNIS] Network mode stored in localStorage — UI-only. Backend enforcement pending.",
+      );
     }
   }
 

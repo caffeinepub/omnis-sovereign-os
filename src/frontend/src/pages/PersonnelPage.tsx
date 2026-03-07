@@ -26,6 +26,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,7 +65,7 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName, parseDisplayName } from "@/lib/displayName";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Clock,
   ExternalLink,
@@ -67,7 +75,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -130,7 +138,7 @@ function PersonnelCard({
   return (
     <div
       data-ocid={`personnel.card.${index}`}
-      className="group relative flex flex-col items-center gap-4 rounded border p-5 transition-all duration-200 hover:border-amber-500/50"
+      className="group relative flex flex-col items-center gap-4 rounded border p-5 transition-all duration-200 hover:border-amber-500/50 hover:bg-amber-500/[0.02]"
       style={{
         backgroundColor: "#1a2235",
         borderColor: "#243048",
@@ -1171,6 +1179,7 @@ export default function PersonnelPage() {
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [clearanceFilter, setClearanceFilter] = useState("all");
 
   // Edit state
@@ -1196,11 +1205,13 @@ export default function PersonnelPage() {
   });
 
   // ── Filtering ─────────────────────────────────────────────────────────────
+  // Use deferred search value so the filter only applies after React yields,
+  // keeping the input responsive even on large lists (no per-keystroke filter).
   const filteredProfiles = useMemo(() => {
     return profiles.filter((p) => {
       const matchesSearch =
-        !searchQuery ||
-        p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        !deferredSearchQuery ||
+        p.name.toLowerCase().includes(deferredSearchQuery.toLowerCase());
 
       const matchesClearance =
         clearanceFilter === "all" ||
@@ -1208,7 +1219,7 @@ export default function PersonnelPage() {
 
       return matchesSearch && matchesClearance;
     });
-  }, [profiles, searchQuery, clearanceFilter]);
+  }, [profiles, deferredSearchQuery, clearanceFilter]);
 
   // ── Edit handlers ─────────────────────────────────────────────────────────
   function handleEdit(profile: ExtendedProfile) {
@@ -1245,6 +1256,23 @@ export default function PersonnelPage() {
 
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
+          {/* Breadcrumb */}
+          <div className="mb-5">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link to="/">Hub</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Personnel Directory</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+
           {/* Header row */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">

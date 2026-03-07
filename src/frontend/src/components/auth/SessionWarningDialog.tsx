@@ -34,8 +34,8 @@ export function SessionWarningDialog({
             Session Expiring Soon
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            You&apos;ve been inactive for 4 minutes. Your session will expire in
-            1 minute.
+            You&apos;ve been inactive for 20 minutes. Your session will expire
+            in 2 minutes.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">

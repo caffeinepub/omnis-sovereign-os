@@ -1,7 +1,7 @@
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { useNavigate } from "@tanstack/react-router";
 import { ShieldAlert, ShieldX } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface DenialRecord {
   reason: string;
@@ -10,7 +10,6 @@ interface DenialRecord {
 
 export default function PendingVerificationPage() {
   const { clear, identity } = useInternetIdentity();
-  const navigate = useNavigate();
   const principalStr = identity?.getPrincipal().toString();
 
   const [denialRecord, setDenialRecord] = useState<DenialRecord | null>(null);
@@ -33,10 +32,9 @@ export default function PendingVerificationPage() {
   };
 
   const handleRequestReview = () => {
-    if (principalStr) {
-      localStorage.removeItem(`omnis_denial_${principalStr}`);
-    }
-    void navigate({ to: "/onboarding" });
+    // Do not remove denial record — contact S2 directly
+    // The denial record is cleared only when S2 approves the user
+    toast.info("Contact your S2 or security officer to appeal this decision.");
   };
 
   return (

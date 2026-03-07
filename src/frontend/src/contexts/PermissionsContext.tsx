@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -36,8 +37,16 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
+  // Use a ref for isFetching so the fetchProfile callback doesn't need it as
+  // a dependency — this avoids a re-creation loop where isFetching flickering
+  // causes the callback to be recreated, which re-triggers the effect.
+  const isFetchingRef = useRef(isFetching);
+  useEffect(() => {
+    isFetchingRef.current = isFetching;
+  }, [isFetching]);
+
   const fetchProfile = useCallback(async () => {
-    if (!actor || isFetching) return;
+    if (!actor || isFetchingRef.current) return;
     setIsLoading(true);
     try {
       const [profileResult, permsResult] = await Promise.all([
@@ -53,7 +62,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       setHasFetched(true);
     }
-  }, [actor, isFetching]);
+  }, [actor]); // isFetching intentionally excluded — read via ref
 
   // Fetch once when actor becomes available and identity is set
   useEffect(() => {

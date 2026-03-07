@@ -1,13 +1,20 @@
 import { TopNav } from "@/components/layout/TopNav";
 import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { CLEARANCE_LABELS, NETWORK_MODE_CONFIGS } from "@/config/constants";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
   Building2,
-  ChevronRight,
   Clock,
   Globe,
   Lock,
@@ -108,9 +115,7 @@ export default function SettingsPage() {
 
   const clearanceLabel =
     CLEARANCE_LABELS[clearanceLevel] ?? `Level ${clearanceLevel}`;
-  const displayName = profile
-    ? `${profile.rank} ${profile.name}`.trim() || "—"
-    : "—";
+  const displayName = profile?.name?.trim() || "—";
 
   return (
     <div
@@ -123,20 +128,21 @@ export default function SettingsPage() {
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl space-y-5">
           {/* Breadcrumb */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-ocid="settings.hub.link"
-              onClick={() => void navigate({ to: "/" })}
-              className="font-mono text-[10px] uppercase tracking-widest text-slate-500 transition-colors hover:text-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              Hub
-            </button>
-            <ChevronRight className="h-3 w-3 text-slate-700" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-              Settings
-            </span>
-          </div>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/" data-ocid="settings.hub.link">
+                    Hub
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Settings</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
 
           {/* Page header */}
           <div className="flex items-start gap-4 pb-2">

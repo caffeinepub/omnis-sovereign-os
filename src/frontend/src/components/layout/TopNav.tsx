@@ -1,4 +1,5 @@
 import type { Message, Notification } from "@/backend.d";
+import { RankSelector } from "@/components/shared/RankSelector";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,22 +22,27 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NETWORK_MODE_CONFIGS } from "@/config/constants";
+import { BRANCH_RANK_CATEGORIES } from "@/config/constants";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
+import { formatDisplayName, parseDisplayName } from "@/lib/displayName";
+import { formatRelativeTime } from "@/lib/formatters";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Bell,
   ChevronDown,
+  ExternalLink,
   Lock,
   LogOut,
   Mail,
   MessageSquare,
   PenSquare,
+  Settings,
   Shield,
   Unlock,
   Upload,
@@ -50,16 +56,20 @@ function getInitials(name: string): string {
   return words.map((w) => w[0]?.toUpperCase() ?? "").join("");
 }
 
-function formatRelativeTime(ts: bigint): string {
-  const ms = Number(ts);
-  const date = ms > 1e15 ? new Date(ms / 1_000_000) : new Date(ms);
-  const now = Date.now();
-  const diff = now - date.getTime();
-
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+/** Infer branch and category from a rank string by scanning BRANCH_RANK_CATEGORIES */
+function inferBranchCategory(rank: string): {
+  branch: string;
+  category: string;
+} {
+  if (!rank) return { branch: "", category: "" };
+  for (const [branch, categories] of Object.entries(BRANCH_RANK_CATEGORIES)) {
+    for (const [category, ranks] of Object.entries(categories)) {
+      if (ranks.includes(rank)) {
+        return { branch, category };
+      }
+    }
+  }
+  return { branch: "", category: "" };
 }
 
 function getNotificationIcon(type: string) {
@@ -94,9 +104,14 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
     identity ?? null,
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
-  const [displayName, setDisplayName] = useState(profile?.name ?? "");
-  const [rank, setRank] = useState(profile?.rank ?? "");
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [mi, setMi] = useState("");
+  const [branch, setBranch] = useState("");
+  const [category, setCategory] = useState("");
+  const [rankVal, setRankVal] = useState("");
   const [email, setEmail] = useState(profile?.email ?? "");
   const [orgRole, setOrgRole] = useState(profile?.orgRole ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? "");
@@ -106,8 +121,16 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
   // Sync form state when profile changes or sheet opens
   useEffect(() => {
     if (open && profile) {
-      setDisplayName(profile.name);
-      setRank(profile.rank);
+      const parsed = parseDisplayName(profile.name ?? "");
+      setLastName(parsed.lastName);
+      setFirstName(parsed.firstName);
+      setMi(parsed.mi);
+      const rankStr = profile.rank ?? "";
+      setRankVal(rankStr);
+      // Infer branch and category from rank so the selector pre-populates correctly
+      const inferred = inferBranchCategory(rankStr);
+      setBranch(inferred.branch);
+      setCategory(inferred.category);
       setEmail(profile.email);
       setOrgRole(profile.orgRole);
       setAvatarUrl(profile.avatarUrl ?? "");
@@ -139,10 +162,17 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
     if (!actor || !profile) return;
     setIsSaving(true);
     try {
+      const effectiveRank = rankVal.trim() || profile.rank;
+      const formattedName = formatDisplayName(
+        effectiveRank,
+        lastName,
+        firstName,
+        mi,
+      );
       await actor.updateMyProfile({
         ...profile,
-        name: displayName.trim(),
-        rank: rank.trim(),
+        name: formattedName,
+        rank: effectiveRank,
         email: email.trim(),
         orgRole: orgRole.trim(),
         avatarUrl: avatarUrl || undefined,
@@ -187,7 +217,7 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
                 style={{ borderColor: "rgba(245,158,11,0.3)" }}
               >
                 {avatarUrl ? (
-                  <AvatarImage src={avatarUrl} alt={displayName} />
+                  <AvatarImage src={avatarUrl} alt={profile?.name ?? ""} />
                 ) : null}
                 <AvatarFallback
                   className="font-mono text-lg font-bold"
@@ -220,6 +250,18 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
                 <Upload className="h-3 w-3" />
                 {isUploadingAvatar ? "Uploading…" : "Upload Photo"}
               </Button>
+              <button
+                type="button"
+                data-ocid="topnav.profile.view_full.link"
+                className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-amber-400 transition-colors hover:text-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                onClick={() => {
+                  onOpenChange(false);
+                  void navigate({ to: "/my-profile" });
+                }}
+              >
+                <ExternalLink className="h-3 w-3" />
+                View Full Profile
+              </button>
             </div>
 
             {/* Clearance level (read-only) */}
@@ -238,32 +280,74 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
               </p>
             </div>
 
-            {/* Display name */}
-            <div className="space-y-1.5">
-              <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-                Display Name
-              </Label>
-              <Input
-                data-ocid="topnav.profile.name.input"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="border font-mono text-xs text-white"
-                style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              />
+            {/* Split name inputs */}
+            <div className="space-y-3">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                Name
+              </p>
+              <div className="grid grid-cols-[1fr_1fr_52px] gap-2">
+                <div className="space-y-1.5">
+                  <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                    Last Name
+                  </Label>
+                  <Input
+                    data-ocid="topnav.profile.name.last.input"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="border font-mono text-xs text-white"
+                    style={{
+                      backgroundColor: "#1a2235",
+                      borderColor: "#2a3347",
+                    }}
+                    placeholder="SMITH"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                    First Name
+                  </Label>
+                  <Input
+                    data-ocid="topnav.profile.name.first.input"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="border font-mono text-xs text-white"
+                    style={{
+                      backgroundColor: "#1a2235",
+                      borderColor: "#2a3347",
+                    }}
+                    placeholder="John"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                    MI
+                  </Label>
+                  <Input
+                    data-ocid="topnav.profile.name.mi.input"
+                    value={mi}
+                    onChange={(e) => setMi(e.target.value.slice(0, 1))}
+                    className="border font-mono text-xs text-white"
+                    style={{
+                      backgroundColor: "#1a2235",
+                      borderColor: "#2a3347",
+                    }}
+                    placeholder="A"
+                    maxLength={1}
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Rank */}
-            <div className="space-y-1.5">
-              <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-                Rank / Title
-              </Label>
-              <Input
-                value={rank}
-                onChange={(e) => setRank(e.target.value)}
-                className="border font-mono text-xs text-white"
-                style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
-              />
-            </div>
+            {/* Rank selector */}
+            <RankSelector
+              branch={branch}
+              category={category}
+              rank={rankVal}
+              onBranchChange={setBranch}
+              onCategoryChange={setCategory}
+              onRankChange={setRankVal}
+              variant="modal"
+            />
 
             {/* Email */}
             <div className="space-y-1.5">
@@ -450,9 +534,9 @@ export function TopNav() {
   // Count unread inbox messages
   const unreadMsgCount = recentInboxMessages.filter((m) => !m.read).length;
 
-  const initials = profile?.name ? getInitials(profile.name) : "??";
+  const initials = profile?.name ? getInitials(profile.name) : "OP";
   // profile.name is already formatted as "RANK LAST, First MI" — use it directly
-  const displayName = profile?.name?.trim() || "Unknown";
+  const displayName = profile?.name?.trim() || "OPERATOR";
 
   const navLinks = [
     { label: "Documents", to: "/documents", ocid: "topnav.documents.link" },
@@ -521,7 +605,7 @@ export function TopNav() {
           <Link
             to="/"
             data-ocid="topnav.link"
-            className="flex flex-col transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="flex flex-col shrink-0 transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <span
               className="font-mono text-lg font-bold uppercase tracking-[0.25em] leading-none"
@@ -529,7 +613,7 @@ export function TopNav() {
             >
               OMNIS
             </span>
-            <span className="font-mono text-[8px] uppercase tracking-widest text-slate-600 leading-none mt-0.5">
+            <span className="hidden font-mono text-[9px] uppercase tracking-widest text-slate-500 leading-none mt-0.5 sm:block">
               Sovereign OS
             </span>
           </Link>
@@ -592,6 +676,16 @@ export function TopNav() {
                   </DropdownMenuItem>
                 );
               })}
+              {isS2Admin && (
+                <DropdownMenuItem
+                  data-ocid="topnav.hub_dropdown.admin_panel.link"
+                  className="cursor-pointer font-mono text-xs uppercase tracking-widest text-amber-400 hover:text-amber-300 focus:text-amber-300"
+                  onClick={() => void navigate({ to: "/admin" })}
+                >
+                  <Settings className="mr-2 h-3 w-3" />
+                  Admin Panel
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator style={{ backgroundColor: "#1a2235" }} />
               {secondaryNavLinks.map((link) => {
                 const active = isActivePath(link.to);
@@ -620,6 +714,26 @@ export function TopNav() {
 
         {/* Right — Actions + user */}
         <div className="flex items-center gap-1">
+          {/* Ctrl+K command palette hint */}
+          <button
+            type="button"
+            data-ocid="topnav.command_palette_open"
+            aria-label="Open command palette (Ctrl+K)"
+            className="hidden items-center gap-1 rounded border px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-slate-600 transition-colors hover:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 sm:flex"
+            style={{ borderColor: "#1a2235", backgroundColor: "transparent" }}
+            onClick={() => {
+              window.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                  key: "k",
+                  ctrlKey: true,
+                  bubbles: true,
+                }),
+              );
+            }}
+          >
+            <span>⌘K</span>
+          </button>
+
           {/* Messages dropdown */}
           <DropdownMenu
             onOpenChange={(open) => {
@@ -936,6 +1050,24 @@ export function TopNav() {
                 <User className="mr-2 h-3.5 w-3.5" />
                 Profile
               </DropdownMenuItem>
+              <DropdownMenuItem
+                data-ocid="topnav.my_profile.link"
+                className="cursor-pointer font-mono text-xs uppercase tracking-widest text-slate-300 hover:text-white focus:text-white"
+                onClick={() => void navigate({ to: "/my-profile" })}
+              >
+                <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                My Profile
+              </DropdownMenuItem>
+              {isS2Admin && (
+                <DropdownMenuItem
+                  data-ocid="topnav.admin_panel.link"
+                  className="cursor-pointer font-mono text-xs uppercase tracking-widest text-amber-400 hover:text-amber-300 focus:text-amber-300"
+                  onClick={() => void navigate({ to: "/admin" })}
+                >
+                  <Settings className="mr-2 h-3.5 w-3.5" />
+                  Admin Panel
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator style={{ backgroundColor: "#1a2235" }} />
               <DropdownMenuItem
                 data-ocid="topnav.signout.button"

@@ -25,6 +25,7 @@ import { SEVERITY_COLORS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { formatRelativeTime } from "@/lib/formatters";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight, ClipboardList, ShieldOff } from "lucide-react";
@@ -32,19 +33,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatRelativeTime(ts: bigint): string {
-  const ms = Number(ts);
-  const date = ms > 1e15 ? new Date(ms / 1_000_000) : new Date(ms);
-  const now = Date.now();
-  const diff = now - date.getTime();
-
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function truncatePrincipal(p: string): string {
   if (p.length <= 12) return p;
@@ -132,7 +120,7 @@ type StatusFilter = "all" | "unresolved" | "resolved";
 export default function AuditLogPage() {
   const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
-  const { isS2Admin } = usePermissions();
+  const { isS2Admin, isLoading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -196,7 +184,7 @@ export default function AuditLogPage() {
     return severityMatch && statusMatch;
   });
 
-  const isLoading = eventsLoading;
+  const isLoading = eventsLoading || permissionsLoading;
 
   return (
     <div

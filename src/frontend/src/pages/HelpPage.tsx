@@ -1,7 +1,14 @@
 import { TopNav } from "@/components/layout/TopNav";
-import { useNavigate } from "@tanstack/react-router";
 import {
-  ChevronRight,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Link } from "@tanstack/react-router";
+import {
   FileText,
   FolderOpen,
   HardDrive,
@@ -116,8 +123,6 @@ function ShortcutRow({
 // ─── HelpPage ─────────────────────────────────────────────────────────────────
 
 export default function HelpPage() {
-  const navigate = useNavigate();
-
   return (
     <div
       data-ocid="help.page"
@@ -129,20 +134,21 @@ export default function HelpPage() {
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl space-y-5">
           {/* Breadcrumb */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-ocid="help.hub.link"
-              onClick={() => void navigate({ to: "/" })}
-              className="font-mono text-[10px] uppercase tracking-widest text-slate-500 transition-colors hover:text-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              Hub
-            </button>
-            <ChevronRight className="h-3 w-3 text-slate-700" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-              Help
-            </span>
-          </div>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/" data-ocid="help.hub.link">
+                    Hub
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Help</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
 
           {/* Page header */}
           <div className="flex items-start gap-4 pb-2">

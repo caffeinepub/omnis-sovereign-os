@@ -741,7 +741,7 @@ export default function DocumentsPage() {
   // ── Breadcrumb tier label ─────────────────────────────────────────────────
   const activeTierLabel = selectedFolder
     ? (CLEARANCE_LABELS[Number(selectedFolder.requiredClearanceLevel)] ??
-      "Unknown")
+      "UNCLASSIFIED")
     : null;
 
   const showTabs = isS2Admin && selectedFolder !== null;
@@ -1021,6 +1021,23 @@ export default function DocumentsPage() {
           )}
         </main>
       </div>
+      {/* Footer */}
+      <footer
+        className="shrink-0 border-t px-4 py-3 text-center"
+        style={{ borderColor: "#1a2235" }}
+      >
+        <p className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
+          © {new Date().getFullYear()}.{" "}
+          <a
+            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-colors hover:text-slate-400"
+          >
+            Built with love using caffeine.ai
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

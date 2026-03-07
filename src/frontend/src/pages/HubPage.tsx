@@ -1,5 +1,6 @@
 import { UserRole } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
+import { ChainOfTrustPanel } from "@/components/shared/ChainOfTrustPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
@@ -13,6 +14,7 @@ import {
   CheckSquare,
   ChevronRight,
   ClipboardList,
+  FlaskConical,
   FolderOpen,
   HardDrive,
   HelpCircle,
@@ -93,6 +95,7 @@ interface SecondaryTileDefinition {
   title: string;
   to: string;
   ocid: string;
+  s2Only?: boolean;
 }
 
 const SECONDARY_TILES: SecondaryTileDefinition[] = [
@@ -134,6 +137,19 @@ const SECONDARY_TILES: SecondaryTileDefinition[] = [
     ocid: "hub.secondary.7",
   },
   { icon: HelpCircle, title: "Help", to: "/help", ocid: "hub.secondary.8" },
+  {
+    icon: FlaskConical,
+    title: "Test Lab",
+    to: "/test-lab",
+    ocid: "hub.secondary.9",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Admin Panel",
+    to: "/admin",
+    s2Only: true,
+    ocid: "hub.secondary.10",
+  },
 ];
 
 interface ChecklistStep {
@@ -191,6 +207,14 @@ export default function HubPage() {
   const [claimCode, setClaimCode] = useState("");
   const [isClaiming, setIsClaiming] = useState(false);
   const [networkModeDismissed, setNetworkModeDismissed] = useState(false);
+  // Chain of trust state
+  const [commanderClaimed, setCommanderClaimed] = useState(
+    () => localStorage.getItem("omnis_commander_claimed") === "true",
+  );
+  const [hasFoundingS2] = useState(
+    () => localStorage.getItem("omnis_founding_s2") === "true",
+  );
+  const chainOfTrustComplete = hasFoundingS2 && commanderClaimed;
 
   // Check if the caller has the admin role but hasn't been flagged as S2 admin yet
   useEffect(() => {
@@ -200,6 +224,17 @@ export default function HubPage() {
       .then((result) => setIsCallerAdminFlag(result))
       .catch(() => setIsCallerAdminFlag(false));
   }, [actor, profile, isS2Admin]);
+
+  // Poll for commander claim every 5s while S2 admin is on hub and chain not yet complete
+  useEffect(() => {
+    if (!isS2Admin || chainOfTrustComplete) return;
+    const interval = setInterval(() => {
+      const claimed =
+        localStorage.getItem("omnis_commander_claimed") === "true";
+      setCommanderClaimed(claimed);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isS2Admin, chainOfTrustComplete]);
 
   const handleActivateS2Admin = async () => {
     if (!actor || !identity) return;
@@ -568,6 +603,22 @@ export default function HubPage() {
             </motion.div>
           )}
 
+          {/* Chain of Trust Panel — S2 admins only, auto-hides when complete */}
+          {isS2Admin && hasFoundingS2 && !chainOfTrustComplete && (
+            <AnimatePresence>
+              <motion.div
+                data-ocid="hub.chain_of_trust.panel"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="mb-5"
+              >
+                <ChainOfTrustPanel />
+              </motion.div>
+            </AnimatePresence>
+          )}
+
           {/* Section heading */}
           <div className="mb-6 flex items-end justify-between">
             <div>
@@ -644,43 +695,48 @@ export default function HubPage() {
           <div className="my-8 flex items-center gap-4">
             <div
               className="h-px flex-1"
-              style={{ backgroundColor: "#1a2235" }}
+              style={{ backgroundColor: "#253045" }}
             />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-slate-400">
               Quick Access
             </span>
             <div
               className="h-px flex-1"
-              style={{ backgroundColor: "#1a2235" }}
+              style={{ backgroundColor: "#253045" }}
             />
           </div>
 
           {/* Secondary compact tiles */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-            {SECONDARY_TILES.map((tile, index) => {
-              const Icon = tile.icon;
-              return (
-                <motion.button
-                  key={tile.to}
-                  type="button"
-                  data-ocid={tile.ocid}
-                  custom={index + TILES.length}
-                  variants={tileVariants}
-                  initial="hidden"
-                  animate="visible"
-                  onClick={() => void navigate({ to: tile.to })}
-                  className="group flex flex-col items-center gap-2 rounded border px-3 py-3 text-center outline-none transition-all duration-200 hover:border-amber-500/50 focus-visible:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500/30"
-                  style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Icon className="h-4 w-4 text-slate-500 transition-colors group-hover:text-amber-400" />
-                  <span className="font-mono text-[9px] uppercase leading-tight tracking-wider text-slate-500 transition-colors group-hover:text-slate-300">
-                    {tile.title}
-                  </span>
-                </motion.button>
-              );
-            })}
+            {SECONDARY_TILES.filter((t) => !t.s2Only || isS2Admin).map(
+              (tile, index) => {
+                const Icon = tile.icon;
+                return (
+                  <motion.button
+                    key={tile.to}
+                    type="button"
+                    data-ocid={tile.ocid}
+                    custom={index + TILES.length}
+                    variants={tileVariants}
+                    initial="hidden"
+                    animate="visible"
+                    onClick={() => void navigate({ to: tile.to })}
+                    className="group flex flex-col items-center gap-2 rounded border px-3 py-3.5 text-center outline-none transition-all duration-200 hover:border-amber-500/50 hover:bg-amber-500/[0.03] focus-visible:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500/30"
+                    style={{
+                      backgroundColor: "#0f1626",
+                      borderColor: "#1e2d40",
+                    }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Icon className="h-4 w-4 text-slate-400 transition-colors group-hover:text-amber-400" />
+                    <span className="font-mono text-[10px] uppercase leading-tight tracking-wider text-slate-400 transition-colors group-hover:text-slate-200">
+                      {tile.title}
+                    </span>
+                  </motion.button>
+                );
+              },
+            )}
           </div>
         </div>
       </main>

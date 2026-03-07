@@ -1,8 +1,5 @@
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { usePermissions } from "@/contexts/PermissionsContext";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
@@ -12,22 +9,15 @@ import { useState } from "react";
 export default function ValidateCommanderPage() {
   const { actor } = useActor();
   const { identity } = useInternetIdentity();
-  const { refreshProfile } = usePermissions();
   const navigate = useNavigate();
 
-  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleActivate = async () => {
     if (!actor || !identity) {
-      setError("Authentication required.");
-      return;
-    }
-    if (!code.trim()) {
-      setError("Validation code is required.");
+      setError("Session not ready. Please sign out and sign in again.");
       return;
     }
 
@@ -37,15 +27,21 @@ export default function ValidateCommanderPage() {
     try {
       await actor.validateS2Admin(identity.getPrincipal());
       setSuccess(true);
-      await refreshProfile();
+
+      // If this is the founding S2 (came from workspace creation), route to wizard
+      const isFoundingS2 = localStorage.getItem("omnis_founding_s2") === "true";
       setTimeout(() => {
-        void navigate({ to: "/" });
+        if (isFoundingS2) {
+          void navigate({ to: "/workspace-setup" });
+        } else {
+          void navigate({ to: "/" });
+        }
       }, 1000);
     } catch (err) {
       const msg =
         err instanceof Error
           ? err.message
-          : "Validation failed. Please try again.";
+          : "Activation failed. Please try again.";
       setError(msg);
     } finally {
       setIsSubmitting(false);
@@ -84,69 +80,50 @@ export default function ValidateCommanderPage() {
             <ShieldCheck className="h-7 w-7 text-amber" />
           </div>
           <h1 className="font-mono text-xl font-bold uppercase tracking-[0.2em] text-foreground">
-            Commander Validation
+            S2 Admin Activation
           </h1>
           <p className="font-mono text-xs leading-relaxed text-muted-foreground">
-            Enter the S2 Admin validation code issued by your Commander to
-            complete authorization
+            Activate your S2 administrator role to gain full system access and
+            provisioning rights.
           </p>
         </div>
 
-        {/* Form card */}
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-lg border border-border bg-card p-6 shadow-2xl"
-        >
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="validate-code"
-                className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
-              >
-                Commander Validation Code
-              </Label>
-              <Input
-                id="validate-code"
-                data-ocid="validate.code_input"
-                type="text"
-                value={code}
-                onChange={(e) => {
-                  setCode(e.target.value);
-                  setError("");
-                }}
-                placeholder="Enter validation code"
-                className="border-input bg-secondary font-mono text-sm tracking-widest text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-primary"
-                autoComplete="off"
-              />
-            </div>
-
-            {success && (
-              <output
-                data-ocid="validate.success_state"
-                className="block font-mono text-xs text-green-400"
-              >
-                ✓ Validation successful. Redirecting...
-              </output>
-            )}
-            {error && <FormError message={error} />}
-
-            <Button
-              data-ocid="validate.submit_button"
-              type="submit"
-              className="h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              disabled={isSubmitting || success}
-            >
-              {isSubmitting ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Validating...
-                </span>
-              ) : (
-                "Submit Validation Code"
-              )}
-            </Button>
+        {/* Card */}
+        <div className="rounded-lg border border-border bg-card p-6 shadow-2xl space-y-4">
+          <div className="rounded border border-amber/20 bg-amber/5 p-3">
+            <p className="font-mono text-[10px] leading-relaxed text-amber-400/80">
+              Commander authorization code enforcement will be enabled in a
+              future backend update. Until then, activation is one click.
+            </p>
           </div>
-        </form>
+
+          {success && (
+            <output
+              data-ocid="validate.success_state"
+              className="block font-mono text-xs text-green-400"
+            >
+              ✓ S2 Admin activated. Redirecting...
+            </output>
+          )}
+          {error && <FormError message={error} />}
+
+          <Button
+            data-ocid="validate.submit_button"
+            type="button"
+            onClick={() => void handleActivate()}
+            className="h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            disabled={isSubmitting || success}
+          >
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Activating...
+              </span>
+            ) : (
+              "Activate S2 Admin"
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -3,35 +3,25 @@ import { TopNav } from "@/components/layout/TopNav";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
 import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { formatRelativeTime } from "@/lib/formatters";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import {
-  Bell,
-  ChevronRight,
-  FolderOpen,
-  MessageSquare,
-  Shield,
-} from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Bell, FolderOpen, MessageSquare, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatRelativeTime(ts: bigint): string {
-  const ms = Number(ts);
-  const date = ms > 1e15 ? new Date(ms / 1_000_000) : new Date(ms);
-  const now = Date.now();
-  const diff = now - date.getTime();
-
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function getNotificationIcon(type: string) {
   switch (type) {
@@ -101,17 +91,12 @@ function NotificationsSkeleton() {
 export default function NotificationsPage() {
   const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const principalStr = identity?.getPrincipal().toString() ?? "anon";
 
   // ── Data fetching ─────────────────────────────────────────────────────────
-  const {
-    data: notifications = [],
-    isLoading,
-    refetch,
-  } = useQuery<Notification[]>({
+  const { data: notifications = [], isLoading } = useQuery<Notification[]>({
     queryKey: ["notifications", principalStr],
     queryFn: async () => {
       if (!actor) return [];
@@ -131,7 +116,10 @@ export default function NotificationsPage() {
       await actor.markNotificationRead(id);
     },
     onSuccess: () => {
-      void refetch();
+      // Invalidate both the full notifications list and the bell badge count
+      void queryClient.invalidateQueries({
+        queryKey: ["notifications", principalStr],
+      });
       void queryClient.invalidateQueries({
         queryKey: [principalStr, "unreadNotificationCount"],
       });
@@ -148,7 +136,10 @@ export default function NotificationsPage() {
       await actor.markAllNotificationsRead();
     },
     onSuccess: () => {
-      void refetch();
+      // Invalidate both the full notifications list and the bell badge count
+      void queryClient.invalidateQueries({
+        queryKey: ["notifications", principalStr],
+      });
       void queryClient.invalidateQueries({
         queryKey: [principalStr, "unreadNotificationCount"],
       });
@@ -170,18 +161,20 @@ export default function NotificationsPage() {
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl">
           {/* Breadcrumb */}
-          <div className="mb-6 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void navigate({ to: "/" })}
-              className="font-mono text-[10px] uppercase tracking-widest text-slate-500 transition-colors hover:text-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              Hub
-            </button>
-            <ChevronRight className="h-3 w-3 text-slate-700" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-              Notifications
-            </span>
+          <div className="mb-6">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link to="/">Hub</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Notifications</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
 
           {/* Page header */}

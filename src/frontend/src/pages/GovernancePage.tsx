@@ -1,10 +1,16 @@
 import { TopNav } from "@/components/layout/TopNav";
-import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, ShieldCheck } from "lucide-react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Link } from "@tanstack/react-router";
+import { ShieldCheck } from "lucide-react";
 
 export default function GovernancePage() {
-  const navigate = useNavigate();
-
   return (
     <div
       data-ocid="governance.page"
@@ -16,18 +22,20 @@ export default function GovernancePage() {
       <main className="flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           {/* Breadcrumb */}
-          <div className="mb-6 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void navigate({ to: "/" })}
-              className="font-mono text-[10px] uppercase tracking-widest text-slate-500 transition-colors hover:text-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              Hub
-            </button>
-            <ChevronRight className="h-3 w-3 text-slate-700" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-              Governance
-            </span>
+          <div className="mb-6">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link to="/">Hub</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Governance</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
 
           {/* Page header */}

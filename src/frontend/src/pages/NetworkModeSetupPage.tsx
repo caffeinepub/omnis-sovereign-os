@@ -116,7 +116,7 @@ export default function NetworkModeSetupPage() {
   function handleConfirm() {
     if (!selected) return;
     setMode(selected);
-    void navigate({ to: "/onboarding" });
+    void navigate({ to: "/settings" });
   }
 
   return (
