@@ -61,20 +61,18 @@ export default function LoginPage() {
 
   // Core navigation effect — fires whenever identity or actor readiness changes.
   // Conditions to attempt navigation:
-  //   1. We are NOT on the INITIAL actor fetch (background refetches are allowed)
-  //   2. We have a real (non-anonymous) identity
+  //   1. We have a real (non-anonymous) identity
+  //   2. We have an authenticated actor (not the anonymous actor)
   //   3. We haven't already started navigating or have a check in flight
-  // Note: actor may be null if _initializeAccessControlWithSecret fails — we
-  //       still navigate to /register in that case (profile check will just fail).
   useEffect(() => {
-    // Guard: block only on the initial actor fetch, not background refetches.
-    // Using `!actor && isFetching` means navigation can proceed once the actor
-    // is available even if TanStack Query has a background refetch in flight.
-    if (!actor && isFetching) return;
-
     // Guard: must have a real (non-anonymous) identity
     if (!identity) return;
     if (identity.getPrincipal().isAnonymous()) return;
+
+    // Guard: actor must be ready AND not still fetching the authenticated actor.
+    // Without this, the anonymous actor returned before II auth completes would
+    // trigger navigation prematurely.
+    if (!actor || isFetching) return;
 
     // Guard: only navigate once
     if (hasNavigated.current || checkInFlight.current) return;

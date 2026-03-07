@@ -44,30 +44,26 @@ export default function RegistrationGatePage() {
   // from TanStack Query must not cancel and restart the timer.
   const timeoutStarted = useRef(false);
 
-  // If the actor never becomes available within 20s AFTER a real identity is
-  // present, break out of the infinite spinner and show a recoverable error.
+  // If the authenticated actor never becomes available within 20s AFTER a real
+  // identity is present, break out of the infinite spinner and show a recoverable error.
   // We do NOT start the timeout until the user has actually authenticated via
-  // Internet Identity — otherwise a slow canister cold-start on page load would
-  // immediately show the error before the user has done anything.
-  // The timer is started only ONCE (via timeoutStarted ref) so that background
-  // refetches from TanStack Query do not cancel and restart it.
-  // actor is intentionally omitted from deps — background refetches changing actor
-  // must not cancel/restart the already-running timer (would cause a never-ending spinner).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: actor intentionally excluded to prevent timer restart on refetch
+  // Internet Identity AND the actor is still loading (isFetching).
+  // The timer is started only ONCE (via timeoutStarted ref).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: actor/isFetching intentionally excluded to prevent timer restart on refetch
   useEffect(() => {
     const hasRealIdentity =
       !!identity && !identity.getPrincipal().isAnonymous();
     // Only start the countdown once the user has authenticated
     if (!hasRealIdentity) return;
-    // Actor is already ready — no timeout needed
-    if (actor) return;
-    // Timer already running — don't restart on isFetching flips
+    // Actor is already ready (and not anonymous) — no timeout needed
+    if (actor && !identity.getPrincipal().isAnonymous()) return;
+    // Timer already running — don't restart
     if (timeoutStarted.current) return;
 
     timeoutStarted.current = true;
     const timer = setTimeout(() => {
       setSessionTimedOut(true);
-    }, 20_000);
+    }, 25_000);
 
     return () => clearTimeout(timer);
   }, [identity]);
@@ -192,8 +188,16 @@ export default function RegistrationGatePage() {
     }
   };
 
+  // Determine whether we're waiting for the authenticated actor.
+  // useActor always returns an actor (even an anonymous one), so we can't use
+  // !actor alone. We're "loading" when we have a real identity but the actor
+  // query is still fetching (meaning the authenticated actor hasn't replaced
+  // the anonymous one yet).
+  const hasRealIdentity = !!identity && !identity.getPrincipal().isAnonymous();
+  const isActorLoading = hasRealIdentity && isFetching;
+
   // Show a loading screen while the actor is still initializing
-  if (isFetching || !actor) {
+  if (isActorLoading) {
     // If init has stalled for too long, show a recoverable error
     if (sessionTimedOut) {
       return (
