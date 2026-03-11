@@ -4,7 +4,7 @@ import { RankSelector } from "@/components/shared/RankSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName } from "@/lib/displayName";
 import { cn } from "@/lib/utils";
@@ -40,24 +40,18 @@ export default function RegistrationGatePage() {
   const [showBootstrapCode, setShowBootstrapCode] = useState(false);
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
   const [isFirstUser, setIsFirstUser] = useState(false);
-  // Ensure the session timeout is only started once — background refetches
-  // from TanStack Query must not cancel and restart the timer.
   const timeoutStarted = useRef(false);
+  // Prevent double-redirect for already-registered users
+  const hasRedirected = useRef(false);
 
-  // If the authenticated actor never becomes available within 20s AFTER a real
-  // identity is present, break out of the infinite spinner and show a recoverable error.
-  // We do NOT start the timeout until the user has actually authenticated via
-  // Internet Identity AND the actor is still loading (isFetching).
-  // The timer is started only ONCE (via timeoutStarted ref).
+  // If the actor never becomes available within 25s after a real identity
+  // is present, show a recoverable error instead of spinning forever.
   // biome-ignore lint/correctness/useExhaustiveDependencies: actor/isFetching intentionally excluded to prevent timer restart on refetch
   useEffect(() => {
     const hasRealIdentity =
       !!identity && !identity.getPrincipal().isAnonymous();
-    // Only start the countdown once the user has authenticated
     if (!hasRealIdentity) return;
-    // Actor is already ready (and not anonymous) — no timeout needed
-    if (actor && !identity.getPrincipal().isAnonymous()) return;
-    // Timer already running — don't restart
+    if (actor && !isFetching) return;
     if (timeoutStarted.current) return;
 
     timeoutStarted.current = true;
@@ -67,6 +61,28 @@ export default function RegistrationGatePage() {
 
     return () => clearTimeout(timer);
   }, [identity]);
+
+  // Redirect already-registered users away from the registration form.
+  useEffect(() => {
+    if (!actor || isFetching) return;
+    if (hasRedirected.current) return;
+
+    actor
+      .getMyProfile()
+      .then((profile) => {
+        if (!profile || !profile.registered) return;
+        if (hasRedirected.current) return;
+        hasRedirected.current = true;
+        if (!profile.isValidatedByCommander && !profile.isS2Admin) {
+          void navigate({ to: "/pending" });
+        } else {
+          void navigate({ to: "/" });
+        }
+      })
+      .catch(() => {
+        // getMyProfile threw — user is not registered, show the form
+      });
+  }, [actor, isFetching, navigate]);
 
   // Detect if this is the first user (no S2 admins exist yet)
   useEffect(() => {
@@ -96,7 +112,6 @@ export default function RegistrationGatePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Actor may still be initializing — wait for it
     if (isFetching) {
       setError(
         "System is still initializing. Please wait a moment and try again.",
@@ -134,7 +149,6 @@ export default function RegistrationGatePage() {
         form.mi,
       );
 
-      // Register profile with standard user defaults
       await actor.registerProfile({
         principalId: principal,
         name: formattedName,
@@ -146,15 +160,24 @@ export default function RegistrationGatePage() {
         isValidatedByCommander: false,
         registered: true,
         avatarUrl: undefined,
+        lastName: form.lastName.trim(),
+        firstName: form.firstName.trim(),
+        middleInitial: form.mi.trim(),
+        branch: branch,
+        rankCategory: category,
+        dodId: "",
+        mos: "",
+        uic: "",
+        orgId: "",
+        registrationStatus: "Pending",
+        denialReason: "",
+        networkEmail: "",
+        unitPhone: "",
       });
 
-      // Bootstrap path: if a code was provided, attempt to elevate to S2 admin
       if (form.bootstrapCode.trim()) {
         try {
-          // Step 1: Grant this caller the admin role in the access control system
           await actor.assignCallerUserRole(principal, UserRole.admin);
-
-          // Step 2: Update profile to set isS2Admin = true now that we have admin rights
           await actor.updateUserProfile({
             principalId: principal,
             name: formattedName,
@@ -166,13 +189,23 @@ export default function RegistrationGatePage() {
             isValidatedByCommander: false,
             registered: true,
             avatarUrl: undefined,
+            lastName: form.lastName.trim(),
+            firstName: form.firstName.trim(),
+            middleInitial: form.mi.trim(),
+            branch: branch,
+            rankCategory: category,
+            dodId: "",
+            mos: "",
+            uic: "",
+            orgId: "",
+            registrationStatus: "Active",
+            denialReason: "",
+            networkEmail: "",
+            unitPhone: "",
           });
-
-          // Step 3: Mark as validated by commander
           await actor.validateS2Admin(principal);
         } catch {
           // Authorization code path failed — continue as regular user
-          // Profile is already registered; just proceed normally
         }
       }
 
@@ -188,17 +221,10 @@ export default function RegistrationGatePage() {
     }
   };
 
-  // Determine whether we're waiting for the authenticated actor.
-  // useActor always returns an actor (even an anonymous one), so we can't use
-  // !actor alone. We're "loading" when we have a real identity but the actor
-  // query is still fetching (meaning the authenticated actor hasn't replaced
-  // the anonymous one yet).
   const hasRealIdentity = !!identity && !identity.getPrincipal().isAnonymous();
   const isActorLoading = hasRealIdentity && isFetching;
 
-  // Show a loading screen while the actor is still initializing
   if (isActorLoading) {
-    // If init has stalled for too long, show a recoverable error
     if (sessionTimedOut) {
       return (
         <div
@@ -322,7 +348,7 @@ export default function RegistrationGatePage() {
           className="rounded-lg border border-border bg-card p-6 shadow-2xl"
         >
           <div className="space-y-4">
-            {/* Name fields — three separate inputs */}
+            {/* Name fields */}
             <div className="space-y-3">
               <Label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
                 Name

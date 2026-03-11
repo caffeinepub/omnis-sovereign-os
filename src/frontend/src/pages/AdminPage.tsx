@@ -59,10 +59,15 @@ function inferBranchCategory(rank: string): {
   return { branch: "", category: "" };
 }
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import {
+  useDeniedUsers,
+  usePendingUsers,
+  useRoleApprovalRequests,
+} from "@/hooks/useQueries";
 import { formatDisplayName, parseDisplayName } from "@/lib/displayName";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -416,7 +421,7 @@ export default function AdminPage() {
   const [showHandoffDialog, setShowHandoffDialog] = useState(false);
   const [showHandoffStubDialog, setShowHandoffStubDialog] = useState(false);
 
-  // ── All profiles ──
+  // ── All profiles (for user management / role tabs) ──
   const {
     data: profiles = [],
     isLoading: profilesLoading,
@@ -435,9 +440,12 @@ export default function AdminPage() {
     staleTime: 0,
   });
 
-  const pendingProfiles = profiles.filter(
-    (p) => !p.isValidatedByCommander && !p.isS2Admin,
-  );
+  // ── Real pending/denied queues ──
+  const { data: pendingProfiles = [], refetch: refetchPending } =
+    usePendingUsers();
+  const { data: _deniedProfiles = [] } = useDeniedUsers();
+  const { data: roleRequests = [], refetch: refetchRoleRequests } =
+    useRoleApprovalRequests();
   const filteredProfiles = profiles.filter((p) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -453,11 +461,12 @@ export default function AdminPage() {
   const approveMutation = useMutation({
     mutationFn: async (profile: ExtendedProfile) => {
       if (!actor) return;
-      await actor.validateS2Admin(profile.principalId);
+      await actor.updateRegistrationStatus(profile.principalId, "Approved", "");
     },
     onSuccess: () => {
       toast.success("User approved");
       void refetchProfiles();
+      void refetchPending();
     },
     onError: () => toast.error("Failed to approve user"),
   });
@@ -468,24 +477,17 @@ export default function AdminPage() {
       reason,
     }: { profile: ExtendedProfile; reason: string }) => {
       if (!actor) return;
-      // Backend doesn't yet have denyUser; log anomaly event as audit trail
-      await actor.createAnomalyEvent({
-        id: crypto.randomUUID(),
-        resolved: false,
-        detectedAt: BigInt(Date.now()),
-        description: `Access denied for ${profile.name}: ${reason}`,
-        isSystemGenerated: false,
-        severity: "low",
-        eventType: "access_denied",
-        affectedUserId: profile.principalId,
-        affectedFolderId: undefined,
-        resolvedBy: undefined,
-      });
+      await actor.updateRegistrationStatus(
+        profile.principalId,
+        "Denied",
+        reason,
+      );
     },
     onSuccess: () => {
-      toast.success("Access denied and logged");
+      toast.success("Access denied");
       setDenyTarget(null);
       void refetchProfiles();
+      void refetchPending();
     },
     onError: () => toast.error("Failed to deny access"),
   });
@@ -565,6 +567,34 @@ export default function AdminPage() {
       setHandoffTarget(null);
     },
     onError: () => toast.error("Failed to log handoff request"),
+  });
+
+  // ── Role Approval Requests Mutations ──
+  const approveRoleRequestMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).approveRoleRequest(requestId);
+    },
+    onSuccess: () => {
+      toast.success("Role request approved");
+      void refetchRoleRequests();
+    },
+    onError: () => toast.error("Failed to approve role request"),
+  });
+
+  const denyRoleRequestMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      notes,
+    }: { requestId: string; notes: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).denyRoleRequest(requestId, notes);
+    },
+    onSuccess: () => {
+      toast.success("Role request denied");
+      void refetchRoleRequests();
+    },
+    onError: () => toast.error("Failed to deny role request"),
   });
 
   if (permLoading) {
@@ -673,6 +703,22 @@ export default function AdminPage() {
                 className="font-mono text-[10px] uppercase tracking-widest data-[state=active]:text-amber-400"
               >
                 Chain of Trust
+              </TabsTrigger>
+              <TabsTrigger
+                data-ocid="admin.role_requests.tab"
+                value="role-requests"
+                className="relative font-mono text-[10px] uppercase tracking-widest data-[state=active]:text-amber-400"
+              >
+                Role Requests
+                {roleRequests.filter((r) => r.status === "pending").length >
+                  0 && (
+                  <span
+                    className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold"
+                    style={{ backgroundColor: "#f59e0b", color: "#0a0e1a" }}
+                  >
+                    {roleRequests.filter((r) => r.status === "pending").length}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1195,6 +1241,96 @@ export default function AdminPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Role Approval Requests ───────────────────────────── */}
+            <TabsContent value="role-requests">
+              {roleRequests.length === 0 ? (
+                <div
+                  data-ocid="admin.role_requests.empty_state"
+                  className="flex flex-col items-center gap-3 py-16"
+                >
+                  <Shield className="h-8 w-8 text-slate-700" />
+                  <p className="font-mono text-xs uppercase tracking-widest text-slate-600">
+                    No pending role requests
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {roleRequests.map((req, idx) => (
+                    <div
+                      key={req.requestId}
+                      data-ocid={`admin.role_requests.item.${idx + 1}`}
+                      className="flex items-center justify-between gap-4 rounded border px-4 py-3"
+                      style={{
+                        backgroundColor: "#0f1626",
+                        borderColor: "#1a2235",
+                      }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-xs font-semibold text-white">
+                          {req.requestId}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[10px] text-slate-500">
+                          Role: {req.requestedRole} · Status:{" "}
+                          <span
+                            style={{
+                              color:
+                                req.status === "pending"
+                                  ? "#f59e0b"
+                                  : req.status === "approved"
+                                    ? "#22c55e"
+                                    : "#ef4444",
+                            }}
+                          >
+                            {req.status}
+                          </span>
+                        </p>
+                      </div>
+                      {req.status === "pending" && (
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            size="sm"
+                            data-ocid={`admin.role_requests.approve_button.${idx + 1}`}
+                            className="h-7 font-mono text-[10px] uppercase tracking-wider"
+                            style={{
+                              backgroundColor: "#22c55e",
+                              color: "#0a0e1a",
+                            }}
+                            onClick={() =>
+                              void approveRoleRequestMutation.mutate(
+                                req.requestId,
+                              )
+                            }
+                            disabled={approveRoleRequestMutation.isPending}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-ocid={`admin.role_requests.deny_button.${idx + 1}`}
+                            className="h-7 border font-mono text-[10px] uppercase tracking-wider text-red-400"
+                            style={{
+                              borderColor: "#2a3347",
+                              backgroundColor: "transparent",
+                            }}
+                            onClick={() =>
+                              void denyRoleRequestMutation.mutate({
+                                requestId: req.requestId,
+                                notes: "Denied by S2 admin",
+                              })
+                            }
+                            disabled={denyRoleRequestMutation.isPending}
+                          >
+                            Deny
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </TabsContent>

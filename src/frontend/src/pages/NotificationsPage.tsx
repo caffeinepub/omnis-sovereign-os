@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatRelativeTime } from "@/lib/formatters";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

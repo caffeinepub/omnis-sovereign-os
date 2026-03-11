@@ -14,7 +14,7 @@
  */
 
 import type { ExtendedProfile } from "@/backend.d";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import {

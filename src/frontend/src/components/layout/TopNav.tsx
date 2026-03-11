@@ -25,7 +25,7 @@ import { NETWORK_MODE_CONFIGS } from "@/config/constants";
 import { BRANCH_RANK_CATEGORIES } from "@/config/constants";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
 import { formatDisplayName, parseDisplayName } from "@/lib/displayName";

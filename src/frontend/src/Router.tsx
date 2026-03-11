@@ -1,3 +1,4 @@
+import type { backendInterface as ExtBackend } from "@/backend.d";
 import { SessionWarningDialog } from "@/components/auth/SessionWarningDialog";
 import { CommanderValidationBanner } from "@/components/layout/CommanderValidationBanner";
 import { CommandPalette } from "@/components/shared/CommandPalette";
@@ -6,6 +7,7 @@ import {
   PermissionsProvider,
   usePermissions,
 } from "@/contexts/PermissionsContext";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
@@ -75,6 +77,16 @@ function AuthenticatedLayout() {
   const [showIdleWarning, setShowIdleWarning] = useState(false);
 
   const isAuthenticated = !!identity && !identity.getPrincipal().isAnonymous();
+  const { actor } = useActor();
+
+  // Set Online presence when authenticated
+  useEffect(() => {
+    if (isAuthenticated && actor) {
+      void (actor as unknown as ExtBackend)
+        .setPresence("Online")
+        .catch(() => {});
+    }
+  }, [isAuthenticated, actor]);
 
   // Hard-reload logout: call authClient.logout() then immediately navigate to
   // /login via window.location so the entire React tree (including the
@@ -82,8 +94,18 @@ function AuthenticatedLayout() {
   // clear() sets authClient→undefined, the init useEffect re-runs, briefly
   // sets loginStatus to "initializing", and leaves the Sign In button disabled.
   const handleLogOut = () => {
-    clear();
-    window.location.href = "/login";
+    if (actor) {
+      void (actor as unknown as ExtBackend)
+        .setPresence("Offline")
+        .catch(() => {})
+        .finally(() => {
+          clear();
+          window.location.href = "/login";
+        });
+    } else {
+      clear();
+      window.location.href = "/login";
+    }
   };
 
   // Idle timer — only active while a real (non-anonymous) identity is present.

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
 import { cn } from "@/lib/utils";
@@ -713,6 +713,10 @@ export default function FileStoragePage() {
         mimeType: selectedFile.type || "application/octet-stream",
         blobStorageKey: hash,
         classificationLevel: 0n,
+        documentStatus: "Active",
+        sha256Hash: "",
+        downloadCount: 0n,
+        orgId: "",
         version: 1n,
       };
       const docId = await actor.createDocument(docPayload);

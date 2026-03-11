@@ -1,135 +1,67 @@
-import type { ExtendedProfile } from "@/backend.d";
 import { StarfieldWarp } from "@/components/auth/StarfieldWarp";
 import { Button } from "@/components/ui/button";
-import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function LoginPage() {
   const { login, identity, isLoggingIn } = useInternetIdentity();
-  const { actor, isFetching } = useActor();
   const navigate = useNavigate();
   const [warpActive, setWarpActive] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [sessionTimedOut, setSessionTimedOut] = useState(false);
-  // Prevent double-navigation even across rapid re-renders
   const hasNavigated = useRef(false);
-  // Track whether a checkAuth call is in flight
-  const checkInFlight = useRef(false);
-  // Ensure the session timeout is only started once — background refetches
-  // must not cancel and restart the timer.
   const timeoutStarted = useRef(false);
 
-  // Reset navigation guard on every fresh mount (covers logout → login cycles)
+  // Reset on mount (covers logout → login cycles)
   useEffect(() => {
     hasNavigated.current = false;
-    checkInFlight.current = false;
     timeoutStarted.current = false;
     setWarpActive(false);
     setIsChecking(false);
     setSessionTimedOut(false);
   }, []);
 
-  // After II authentication, if the actor never becomes ready within 20s, show
-  // an actionable error instead of spinning forever.
-  // The timer is started only ONCE (via timeoutStarted ref) so that background
-  // refetches from TanStack Query do not cancel and restart it.
-  // actor is intentionally omitted from deps — background refetches changing actor
-  // must not cancel/restart the already-running timer (would cause a never-ending spinner).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: actor intentionally excluded to prevent timer restart on refetch
-  useEffect(() => {
-    const hasRealIdentity =
-      !!identity && !identity.getPrincipal().isAnonymous();
-    // Only start once we have a real identity
-    if (!hasRealIdentity || hasNavigated.current) return;
-    // Actor is already ready — no timeout needed
-    if (actor) return;
-    // Timer already running — don't restart on isFetching flips
-    if (timeoutStarted.current) return;
+  const triggerNavigate = useCallback(() => {
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
+    setWarpActive(true);
+    setIsChecking(true);
+    setTimeout(() => {
+      void navigate({ to: "/register" });
+    }, 1800);
+  }, [navigate]);
 
+  // When identity becomes real, navigate immediately — no actor needed.
+  // RegistrationGatePage handles profile-based routing.
+  useEffect(() => {
+    if (!identity) return;
+    if (identity.getPrincipal().isAnonymous()) return;
+    triggerNavigate();
+  }, [identity, triggerNavigate]);
+
+  // Safety-net timeout: if identity never becomes real within 20s, show error.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs once on mount only
+  useEffect(() => {
+    if (timeoutStarted.current) return;
     timeoutStarted.current = true;
     const timer = setTimeout(() => {
       if (!hasNavigated.current) {
         setSessionTimedOut(true);
       }
     }, 20_000);
-
     return () => clearTimeout(timer);
-  }, [identity]);
-
-  // Core navigation effect — fires whenever identity or actor readiness changes.
-  // Conditions to attempt navigation:
-  //   1. We have a real (non-anonymous) identity
-  //   2. We have an authenticated actor (not the anonymous actor)
-  //   3. We haven't already started navigating or have a check in flight
-  useEffect(() => {
-    // Guard: must have a real (non-anonymous) identity
-    if (!identity) return;
-    if (identity.getPrincipal().isAnonymous()) return;
-
-    // Guard: actor must be ready AND not still fetching the authenticated actor.
-    // Without this, the anonymous actor returned before II auth completes would
-    // trigger navigation prematurely.
-    if (!actor || isFetching) return;
-
-    // Guard: only navigate once
-    if (hasNavigated.current || checkInFlight.current) return;
-
-    checkInFlight.current = true;
-
-    const checkAuth = async () => {
-      try {
-        hasNavigated.current = true;
-        setWarpActive(true);
-        setIsChecking(true);
-
-        // Give the warp animation a moment
-        await new Promise<void>((res) => setTimeout(res, 1800));
-
-        // If actor is available, check the profile to route correctly.
-        // If actor is null (initialization failed), fall through to /register.
-        let profile: ExtendedProfile | null = null;
-        if (actor) {
-          try {
-            profile = await actor.getMyProfile();
-          } catch {
-            // getMyProfile threw — treat as unregistered so user can register
-          }
-        }
-
-        if (!profile || !profile.registered) {
-          void navigate({ to: "/register" });
-        } else if (!profile.isValidatedByCommander && !profile.isS2Admin) {
-          void navigate({ to: "/pending" });
-        } else {
-          void navigate({ to: "/" });
-        }
-      } catch {
-        // Something failed — reset so the user can try again
-        hasNavigated.current = false;
-        checkInFlight.current = false;
-        setWarpActive(false);
-        setIsChecking(false);
-      }
-    };
-
-    void checkAuth();
-  }, [identity, actor, isFetching, navigate]);
+  }, []);
 
   const isLoading = isLoggingIn || isChecking || warpActive;
 
   const handleSignIn = () => {
-    // If we already have a valid identity, just reset the latch and let the
-    // effect above handle navigation (covers "stored session" case where II
-    // is already authenticated but the page was re-mounted after sign-out)
     if (identity && !identity.getPrincipal().isAnonymous()) {
-      hasNavigated.current = false;
-      checkInFlight.current = false;
+      // Already authenticated — trigger navigation directly
+      triggerNavigate();
       return;
     }
-    // Otherwise open the II popup
     login();
   };
 
@@ -187,7 +119,7 @@ export default function LoginPage() {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        {/* Session timeout error — shown when actor init stalls */}
+        {/* Session timeout error */}
         {sessionTimedOut ? (
           <div className="flex w-72 flex-col items-center gap-4">
             <div

@@ -10,7 +10,7 @@
  */
 
 import type { ExtendedProfile } from "@/backend.d";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -286,15 +286,49 @@ export default function OnboardingPage() {
   const canCreateWorkspace =
     createName.trim() && createUic.trim() && createType && createMode;
 
-  const handleEstablishWorkspace = () => {
+  const handleEstablishWorkspace = async () => {
     if (!canCreateWorkspace) return;
+    const uic = createUic.trim().toUpperCase();
+    const orgId = crypto.randomUUID();
     const ws = {
       name: createName.trim(),
-      uic: createUic.trim().toUpperCase(),
+      uic,
       type: createType,
       mode: createMode,
       createdAt: new Date().toISOString(),
     };
+
+    // Check if UIC already exists in backend
+    if (actor) {
+      try {
+        const existing = await actor.getOrganizationByUIC(uic);
+        if (existing) {
+          // UIC already taken — store the existing org and proceed
+          localStorage.setItem(
+            "omnis_workspace",
+            JSON.stringify({ ...ws, orgId: existing.orgId }),
+          );
+          localStorage.setItem("omnis_founding_s2", "true");
+          void navigate({ to: "/validate-commander" });
+          return;
+        }
+        // Create new org in backend
+        await actor.createOrganization({
+          orgId,
+          name: createName.trim(),
+          uic,
+          orgType: createType,
+          networkMode:
+            createMode === "Military" ? "military-nipr" : "corporate-standard",
+          adminPrincipal: identity!.getPrincipal(),
+          createdAt: BigInt(Date.now()),
+        });
+        localStorage.setItem("omnis_org_id", orgId);
+      } catch {
+        // Non-blocking — continue with localStorage-only flow
+      }
+    }
+
     localStorage.setItem("omnis_workspace", JSON.stringify(ws));
     localStorage.setItem("omnis_founding_s2", "true");
     void navigate({ to: "/validate-commander" });

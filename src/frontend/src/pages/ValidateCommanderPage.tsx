@@ -1,5 +1,8 @@
+import type { backendInterface as ExtBackend } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
@@ -11,6 +14,7 @@ export default function ValidateCommanderPage() {
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
 
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -21,14 +25,49 @@ export default function ValidateCommanderPage() {
       return;
     }
 
+    if (!code.trim()) {
+      setError("Commander authorization code is required.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError("");
 
     try {
-      await actor.validateS2Admin(identity.getPrincipal());
+      // First validate the auth code against the backend
+      const codeValid = await (
+        actor as unknown as ExtBackend
+      ).validateCommanderAuthCode(code.trim());
+      if (!codeValid) {
+        setError(
+          "Invalid authorization code. Contact the Commander for the correct code.",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Code valid — activate S2 admin role
+      await (actor as unknown as ExtBackend).validateS2Admin(
+        identity.getPrincipal(),
+      );
+
+      // Log governance event for S2 activation
+      try {
+        await (actor as unknown as ExtBackend).logGovernanceEvent({
+          recordId: crypto.randomUUID(),
+          eventType: "s2_activation",
+          description:
+            "S2 Admin role activated via Commander Authorization Code",
+          triggeredBy: identity.getPrincipal(),
+          timestamp: BigInt(Date.now()),
+          wasmHash: "",
+        });
+      } catch {
+        // Non-blocking — activation still succeeded
+      }
+
       setSuccess(true);
 
-      // If this is the founding S2 (came from workspace creation), route to wizard
       const isFoundingS2 = localStorage.getItem("omnis_founding_s2") === "true";
       setTimeout(() => {
         if (isFoundingS2) {
@@ -36,7 +75,7 @@ export default function ValidateCommanderPage() {
         } else {
           void navigate({ to: "/" });
         }
-      }, 1000);
+      }, 1200);
     } catch (err) {
       const msg =
         err instanceof Error
@@ -83,46 +122,67 @@ export default function ValidateCommanderPage() {
             S2 Admin Activation
           </h1>
           <p className="font-mono text-xs leading-relaxed text-muted-foreground">
-            Activate your S2 administrator role to gain full system access and
-            provisioning rights.
+            Enter the Commander authorization code to activate your S2
+            administrator role.
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-lg border border-border bg-card p-6 shadow-2xl space-y-4">
-          <div className="rounded border border-amber/20 bg-amber/5 p-3">
-            <p className="font-mono text-[10px] leading-relaxed text-amber-400/80">
-              Commander authorization code enforcement will be enabled in a
-              future backend update. Until then, activation is one click.
-            </p>
-          </div>
-
-          {success && (
+        <div className="space-y-4 rounded-lg border border-border bg-card p-6 shadow-2xl">
+          {success ? (
             <output
               data-ocid="validate.success_state"
               className="block font-mono text-xs text-green-400"
             >
               ✓ S2 Admin activated. Redirecting...
             </output>
-          )}
-          {error && <FormError message={error} />}
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                  Commander Authorization Code
+                </Label>
+                <Input
+                  data-ocid="validate.code.input"
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleActivate();
+                  }}
+                  placeholder="Enter code..."
+                  className="border font-mono text-sm tracking-[0.15em] text-white"
+                  style={{ backgroundColor: "#1a2235", borderColor: "#2a3347" }}
+                  disabled={isSubmitting}
+                  autoComplete="off"
+                />
+              </div>
 
-          <Button
-            data-ocid="validate.submit_button"
-            type="button"
-            onClick={() => void handleActivate()}
-            className="h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            disabled={isSubmitting || success}
-          >
-            {isSubmitting ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Activating...
-              </span>
-            ) : (
-              "Activate S2 Admin"
-            )}
-          </Button>
+              {error && <FormError message={error} />}
+
+              <Button
+                data-ocid="validate.submit_button"
+                type="button"
+                onClick={() => void handleActivate()}
+                className="h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                disabled={isSubmitting || !code.trim()}
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Validating...
+                  </span>
+                ) : (
+                  "Activate S2 Admin"
+                )}
+              </Button>
+
+              <p className="text-center font-mono text-[10px] leading-relaxed text-slate-600">
+                Contact your Commander for the authorization code. Each code is
+                single-use and time-limited.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

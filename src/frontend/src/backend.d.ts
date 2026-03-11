@@ -31,6 +31,10 @@ export interface Document {
     folderId: string;
     uploadedAt: bigint;
     uploadedBy: Principal;
+    documentStatus: string;
+    sha256Hash: string;
+    downloadCount: bigint;
+    orgId: string;
 }
 export interface FolderPermission {
     grantedAt: bigint;
@@ -51,6 +55,22 @@ export interface ExtendedProfile {
     avatarUrl?: string;
     principalId: Principal;
     registered: boolean;
+    lastName: string;
+    firstName: string;
+    middleInitial: string;
+    branch: string;
+    rankCategory: string;
+    dodId: string;
+    mos: string;
+    uic: string;
+    orgId: string;
+    registrationStatus: string;
+    denialReason: string;
+    verifiedBy?: Principal;
+    verifiedAt?: bigint;
+    clearanceExpiry?: bigint;
+    networkEmail: string;
+    unitPhone: string;
 }
 export interface Notification {
     id: string;
@@ -108,6 +128,118 @@ export interface UserProfile {
     email: string;
     avatarUrl?: string;
 }
+export interface Organization {
+    orgId: string;
+    name: string;
+    uic: string;
+    orgType: string;
+    networkMode: string;
+    adminPrincipal: Principal;
+    createdAt: bigint;
+}
+export interface OrgAccessRequest {
+    requestId: string;
+    orgId: string;
+    requestorPrincipal: Principal;
+    status: string;
+    requestedAt: bigint;
+    reviewedAt?: bigint;
+    reviewedBy?: Principal;
+}
+export interface RoleApprovalRequest {
+    requestId: string;
+    requestorPrincipal: Principal;
+    targetPrincipal: Principal;
+    requestedRole: string;
+    approverPrincipal?: Principal;
+    status: string;
+    requestedAt: bigint;
+    resolvedAt?: bigint;
+    notes: string;
+}
+export interface DocumentVersion {
+    versionId: string;
+    documentId: string;
+    version: bigint;
+    uploadedBy: Principal;
+    uploadedAt: bigint;
+    changeNote: string;
+}
+export interface DocumentAccessEntry {
+    entryId: string;
+    documentId: string;
+    userId: Principal;
+    grantedBy: Principal;
+    grantedAt: bigint;
+    clearanceLevelRequired: bigint;
+}
+export interface MessageGroup {
+    groupId: string;
+    orgId: string;
+    name: string;
+    createdBy: Principal;
+    createdAt: bigint;
+    memberPrincipals: Principal[];
+}
+export interface GroupMessage {
+    messageId: string;
+    groupId: string;
+    fromUserId: Principal;
+    body: string;
+    sentAt: bigint;
+}
+export interface BroadcastMessage {
+    messageId: string;
+    orgId: string;
+    fromUserId: Principal;
+    title: string;
+    body: string;
+    sentAt: bigint;
+    classification: string;
+}
+export interface CalendarEvent {
+    eventId: string;
+    orgId: string;
+    title: string;
+    description: string;
+    startTime: bigint;
+    endTime: bigint;
+    createdBy: Principal;
+    classification: string;
+    isOrgWide: boolean;
+}
+export interface Task {
+    taskId: string;
+    orgId: string;
+    title: string;
+    description: string;
+    assignedTo: Principal;
+    assignedBy: Principal;
+    dueDate?: bigint;
+    status: string;
+    priority: string;
+    createdAt: bigint;
+}
+export interface KeywordWatchEntry {
+    keyword: string;
+    addedBy: Principal;
+    addedAt: bigint;
+    severity: string;
+    active: boolean;
+}
+export interface GovernanceRecord {
+    recordId: string;
+    eventType: string;
+    description: string;
+    triggeredBy: Principal;
+    timestamp: bigint;
+    wasmHash: string;
+}
+export interface UserPresence {
+    userId: Principal;
+    status: string;
+    lastSeen: bigint;
+}
 export enum DocumentPermission {
     Viewer = "Viewer",
     Editor = "Editor",
@@ -120,6 +252,7 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
+    // Existing 44 functions
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     batchSetFolderPermissions(permissions: Array<FolderPermission>): Promise<void>;
     createAnomalyEvent(event: AnomalyEvent): Promise<string>;
@@ -171,4 +304,81 @@ export interface backendInterface {
     updateSection(section: Section): Promise<void>;
     updateUserProfile(profile: ExtendedProfile): Promise<void>;
     validateS2Admin(callerId: Principal): Promise<void>;
+    // Organization
+    createOrganization(org: Organization): Promise<string>;
+    getOrganization(orgId: string): Promise<Organization | null>;
+    getOrganizationByUIC(uic: string): Promise<Organization | null>;
+    updateOrganization(org: Organization): Promise<void>;
+    requestOrgAccess(request: OrgAccessRequest): Promise<string>;
+    approveOrgAccess(requestId: string): Promise<void>;
+    denyOrgAccess(requestId: string, reason: string): Promise<void>;
+    getOrgAccessRequests(orgId: string): Promise<Array<OrgAccessRequest>>;
+    // Profile/Registration
+    updateRegistrationStatus(userId: Principal, status: string, reason: string): Promise<void>;
+    getPendingUsers(): Promise<Array<ExtendedProfile>>;
+    getDeniedUsers(): Promise<Array<ExtendedProfile>>;
+    // Commander Auth Code
+    generateCommanderAuthCode(): Promise<string>;
+    validateCommanderAuthCode(code: string): Promise<boolean>;
+    rotateCommanderAuthCode(): Promise<string>;
+    getCommanderAuthCodeStatus(): Promise<boolean>;
+    // Role Approval
+    createRoleApprovalRequest(request: RoleApprovalRequest): Promise<string>;
+    approveRoleRequest(requestId: string): Promise<void>;
+    denyRoleRequest(requestId: string, notes: string): Promise<void>;
+    getRoleApprovalRequests(): Promise<Array<RoleApprovalRequest>>;
+    // Document Enhancements
+    setDocumentAccessList(documentId: string, entries: Array<DocumentAccessEntry>): Promise<void>;
+    getDocumentAccessList(documentId: string): Promise<Array<DocumentAccessEntry>>;
+    addDocumentAccess(entry: DocumentAccessEntry): Promise<void>;
+    removeDocumentAccess(documentId: string, userId: Principal): Promise<void>;
+    createDocumentVersion(version: DocumentVersion): Promise<string>;
+    getDocumentVersions(documentId: string): Promise<Array<DocumentVersion>>;
+    updateDocumentStatus(documentId: string, status: string): Promise<void>;
+    incrementDocumentDownloadCount(documentId: string): Promise<void>;
+    // Group Messaging
+    createMessageGroup(group: MessageGroup): Promise<string>;
+    getMessageGroup(groupId: string): Promise<MessageGroup | null>;
+    deleteMessageGroup(groupId: string): Promise<void>;
+    getMyMessageGroups(): Promise<Array<MessageGroup>>;
+    sendGroupMessage(message: GroupMessage): Promise<string>;
+    getGroupMessages(groupId: string): Promise<Array<GroupMessage>>;
+    markGroupMessageRead(messageId: string): Promise<void>;
+    createBroadcastMessage(message: BroadcastMessage): Promise<string>;
+    getBroadcastMessages(): Promise<Array<BroadcastMessage>>;
+    markBroadcastRead(messageId: string): Promise<void>;
+    // Presence
+    setPresence(status: string): Promise<void>;
+    getPresence(userId: Principal): Promise<UserPresence | null>;
+    getOrgPresence(): Promise<Array<UserPresence>>;
+    // Calendar
+    createCalendarEvent(event: CalendarEvent): Promise<string>;
+    getCalendarEvents(orgId: string): Promise<Array<CalendarEvent>>;
+    updateCalendarEvent(event: CalendarEvent): Promise<void>;
+    deleteCalendarEvent(eventId: string): Promise<void>;
+    getMyCalendarEvents(): Promise<Array<CalendarEvent>>;
+    // Tasks
+    createTask(task: Task): Promise<string>;
+    updateTask(task: Task): Promise<void>;
+    deleteTask(taskId: string): Promise<void>;
+    getMyTasks(): Promise<Array<Task>>;
+    getOrgTasks(orgId: string): Promise<Array<Task>>;
+    updateTaskStatus(taskId: string, status: string): Promise<void>;
+    // AI / Anomaly
+    addKeywordWatch(entry: KeywordWatchEntry): Promise<void>;
+    removeKeywordWatch(keyword: string): Promise<void>;
+    getKeywordWatchList(): Promise<Array<KeywordWatchEntry>>;
+    flagAnomalyForEscalation(eventId: string): Promise<void>;
+    quarantineDocument(documentId: string, reason: string): Promise<void>;
+    clearDocumentQuarantine(documentId: string): Promise<void>;
+    // Governance
+    logGovernanceEvent(record: GovernanceRecord): Promise<void>;
+    getGovernanceLog(): Promise<Array<GovernanceRecord>>;
+    getWasmHash(): Promise<string>;
+    getRoleApprovalPool(): Promise<Array<RoleApprovalRequest>>;
+    submitTpiApproval(requestId: string, approved: boolean, notes: string): Promise<void>;
+    // Session
+    registerActiveSession(sessionToken: string): Promise<void>;
+    invalidateOtherSessions(): Promise<void>;
+    getPendingRegistrationExpiry(userId: Principal): Promise<bigint | null>;
 }

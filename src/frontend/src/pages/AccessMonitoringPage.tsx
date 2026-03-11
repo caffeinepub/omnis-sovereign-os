@@ -49,7 +49,7 @@ import {
   type ThreatScore,
 } from "@/config/aiDemoData";
 import { SEVERITY_COLORS } from "@/config/constants";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQuery } from "@tanstack/react-query";
 import {

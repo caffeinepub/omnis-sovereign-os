@@ -1,6 +1,6 @@
 import type { ExtendedProfile, Folder, FolderPermission } from "@/backend.d";
 import { DocumentPermission } from "@/backend.d";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
   type ReactNode,

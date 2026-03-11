@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { SEVERITY_COLORS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatRelativeTime } from "@/lib/formatters";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

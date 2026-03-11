@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -253,6 +253,19 @@ export default function HubPage() {
         isValidatedByCommander: false,
         registered: true,
         avatarUrl: profile?.avatarUrl,
+        lastName: profile?.lastName ?? "",
+        firstName: profile?.firstName ?? "",
+        middleInitial: profile?.middleInitial ?? "",
+        branch: profile?.branch ?? "",
+        rankCategory: profile?.rankCategory ?? "",
+        dodId: profile?.dodId ?? "",
+        mos: profile?.mos ?? "",
+        uic: profile?.uic ?? "",
+        orgId: profile?.orgId ?? "",
+        registrationStatus: profile?.registrationStatus ?? "Active",
+        denialReason: profile?.denialReason ?? "",
+        networkEmail: profile?.networkEmail ?? "",
+        unitPhone: profile?.unitPhone ?? "",
       });
       await actor.validateS2Admin(principal);
       await refreshProfile();
@@ -294,6 +307,19 @@ export default function HubPage() {
         isValidatedByCommander: false,
         registered: true,
         avatarUrl: profile?.avatarUrl,
+        lastName: profile?.lastName ?? "",
+        firstName: profile?.firstName ?? "",
+        middleInitial: profile?.middleInitial ?? "",
+        branch: profile?.branch ?? "",
+        rankCategory: profile?.rankCategory ?? "",
+        dodId: profile?.dodId ?? "",
+        mos: profile?.mos ?? "",
+        uic: profile?.uic ?? "",
+        orgId: profile?.orgId ?? "",
+        registrationStatus: profile?.registrationStatus ?? "Active",
+        denialReason: profile?.denialReason ?? "",
+        networkEmail: profile?.networkEmail ?? "",
+        unitPhone: profile?.unitPhone ?? "",
       });
       await actor.validateS2Admin(principal);
       await refreshProfile();

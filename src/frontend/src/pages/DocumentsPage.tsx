@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CLEARANCE_LABELS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
@@ -198,6 +198,10 @@ function UploadModal({
         mimeType: file!.type || "application/octet-stream",
         blobStorageKey: undefined,
         classificationLevel: BigInt(Number.parseInt(classLevel, 10)),
+        documentStatus: "Active",
+        sha256Hash: "",
+        downloadCount: 0n,
+        orgId: "",
         version: 1n,
       };
       await actor.createDocument(doc);

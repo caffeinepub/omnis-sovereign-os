@@ -45,7 +45,7 @@ function inferBranchCategory(rank: string): {
   return { branch: "", category: "" };
 }
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useStorageClient } from "@/hooks/useStorageClient";
 import { formatDisplayName, parseDisplayName } from "@/lib/displayName";

@@ -61,7 +61,7 @@ import {
 } from "@/components/ui/tooltip";
 import { CLEARANCE_LABELS } from "@/config/constants";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { formatDisplayName, parseDisplayName } from "@/lib/displayName";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1069,6 +1069,19 @@ const DEMO_PROFILE: ExtendedProfile = {
   isValidatedByCommander: true,
   registered: true,
   avatarUrl: undefined,
+  lastName: "GRACIE",
+  firstName: "Nicholas",
+  middleInitial: "J",
+  branch: "Army",
+  rankCategory: "Enlisted",
+  dodId: "",
+  mos: "11Z",
+  uic: "WH9RT0",
+  orgId: "",
+  registrationStatus: "Active",
+  denialReason: "",
+  networkEmail: "nicholas.j.gracie.mil@army.mil",
+  unitPhone: "",
 };
 
 // ─── Demo Card wrapper (amber outline to distinguish from live data) ──────────
