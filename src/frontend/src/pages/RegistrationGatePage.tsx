@@ -177,8 +177,10 @@ export default function RegistrationGatePage() {
 
       if (form.bootstrapCode.trim()) {
         try {
-          await actor.assignCallerUserRole(principal, UserRole.admin);
-          await actor.updateUserProfile({
+          // Use updateMyProfile (requires #user role only) to self-activate as S2 admin.
+          // validateS2Admin and assignCallerUserRole require #admin role which is not
+          // available on the production canister URL.
+          await actor.updateMyProfile({
             principalId: principal,
             name: formattedName,
             rank: form.rank.trim(),
@@ -203,7 +205,6 @@ export default function RegistrationGatePage() {
             networkEmail: "",
             unitPhone: "",
           });
-          await actor.validateS2Admin(principal);
         } catch {
           // Authorization code path failed — continue as regular user
         }

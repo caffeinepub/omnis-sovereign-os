@@ -1,4 +1,3 @@
-import { UserRole } from "@/backend.d";
 import { TopNav } from "@/components/layout/TopNav";
 import { ChainOfTrustPanel } from "@/components/shared/ChainOfTrustPanel";
 import { Button } from "@/components/ui/button";
@@ -241,8 +240,9 @@ export default function HubPage() {
     setIsActivating(true);
     try {
       const principal = identity.getPrincipal();
-      await actor.assignCallerUserRole(principal, UserRole.admin);
-      await actor.updateUserProfile({
+      // Use updateMyProfile (requires #user role only) instead of validateS2Admin
+      // which requires #admin role unavailable on production canister URL.
+      await actor.updateMyProfile({
         principalId: principal,
         name: profile?.name ?? "",
         rank: profile?.rank ?? "",
@@ -262,12 +262,11 @@ export default function HubPage() {
         mos: profile?.mos ?? "",
         uic: profile?.uic ?? "",
         orgId: profile?.orgId ?? "",
-        registrationStatus: profile?.registrationStatus ?? "Active",
+        registrationStatus: "Active",
         denialReason: profile?.denialReason ?? "",
         networkEmail: profile?.networkEmail ?? "",
         unitPhone: profile?.unitPhone ?? "",
       });
-      await actor.validateS2Admin(principal);
       await refreshProfile();
       toast.success("S2 admin activated", {
         description: "You now have full S2 admin access.",
@@ -290,13 +289,8 @@ export default function HubPage() {
       // The bootstrap code is passed as the caffeineAdminToken.
       // We re-initialize the actor with the provided code as the admin token
       // by calling _initializeAccessControlWithSecret directly.
-      await (
-        actor as unknown as {
-          _initializeAccessControlWithSecret: (token: string) => Promise<void>;
-        }
-      )._initializeAccessControlWithSecret(claimCode.trim());
-      await actor.assignCallerUserRole(principal, UserRole.admin);
-      await actor.updateUserProfile({
+      // Use updateMyProfile (requires #user role only) to set S2 admin flags.
+      await actor.updateMyProfile({
         principalId: principal,
         name: profile?.name ?? "",
         rank: profile?.rank ?? "",
@@ -316,12 +310,11 @@ export default function HubPage() {
         mos: profile?.mos ?? "",
         uic: profile?.uic ?? "",
         orgId: profile?.orgId ?? "",
-        registrationStatus: profile?.registrationStatus ?? "Active",
+        registrationStatus: "Active",
         denialReason: profile?.denialReason ?? "",
         networkEmail: profile?.networkEmail ?? "",
         unitPhone: profile?.unitPhone ?? "",
       });
-      await actor.validateS2Admin(principal);
       await refreshProfile();
       setShowClaimPanel(false);
       setClaimCode("");

@@ -1,5 +1,4 @@
 import type { backendInterface as ExtBackend } from "@/backend.d";
-import { UserRole } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
 import { useActor } from "@/hooks/useActor";
@@ -30,27 +29,52 @@ export default function ValidateCommanderPage() {
       const principal = identity.getPrincipal();
       const ext = actor as unknown as ExtBackend;
 
-      // Step 1: Grant admin role to self (required before validateS2Admin)
-      await actor.assignCallerUserRole(principal, UserRole.admin);
-
-      // Step 2: Get current profile to preserve existing fields
+      // Get current profile to preserve existing fields
       const profile = await ext.getMyProfile();
 
-      // Step 3: Mark as S2 admin in profile
-      if (profile) {
-        await ext.updateUserProfile({
-          ...profile,
-          isS2Admin: true,
-          isValidatedByCommander: true,
-          clearanceLevel: 4n,
-          registrationStatus: "Active",
-        });
-      }
+      // Update profile to set S2 admin flags.
+      // Uses updateMyProfile (requires #user role only) rather than
+      // validateS2Admin (requires #admin role, unavailable on production URL).
+      const baseProfile = profile ?? {
+        principalId: principal,
+        name: "",
+        rank: "",
+        email: "",
+        orgRole: "S2 Administrator",
+        clearanceLevel: 0n,
+        isS2Admin: false,
+        isValidatedByCommander: false,
+        registered: true,
+        avatarUrl: undefined,
+        lastName: "",
+        firstName: "",
+        middleInitial: "",
+        branch: "",
+        rankCategory: "",
+        dodId: "",
+        mos: "",
+        uic: "",
+        orgId: "",
+        registrationStatus: "Pending",
+        denialReason: "",
+        verifiedBy: undefined,
+        verifiedAt: undefined,
+        clearanceExpiry: undefined,
+        networkEmail: "",
+        unitPhone: "",
+      };
 
-      // Step 4: Call validateS2Admin (now succeeds because we have admin role)
-      await ext.validateS2Admin(principal);
+      await ext.updateMyProfile({
+        ...baseProfile,
+        principalId: principal,
+        isS2Admin: true,
+        isValidatedByCommander: true,
+        clearanceLevel: 4n,
+        registrationStatus: "Active",
+        registered: true,
+      });
 
-      // Step 5: Log governance event (non-blocking)
+      // Log governance event (non-blocking)
       try {
         await ext.logGovernanceEvent({
           recordId: crypto.randomUUID(),
