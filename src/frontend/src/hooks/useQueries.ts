@@ -371,7 +371,9 @@ export function useOrgPresence() {
     queryFn: async () => {
       if (!actor) return [];
       try {
-        return await (actor as unknown as ExtBackend).getOrgPresence();
+        const ext = actor as unknown as ExtBackend;
+        if (typeof ext.getOrgPresence !== "function") return [];
+        return await ext.getOrgPresence();
       } catch {
         return [];
       }

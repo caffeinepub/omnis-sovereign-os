@@ -4,6 +4,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -21,6 +29,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { NETWORK_MODE_CONFIGS } from "@/config/constants";
 import { BRANCH_RANK_CATEGORIES } from "@/config/constants";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
@@ -35,6 +44,7 @@ import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Bell,
+  Building2,
   ChevronDown,
   ExternalLink,
   Lock,
@@ -413,6 +423,10 @@ function ProfileSheet({ open, onOpenChange }: ProfileSheetProps) {
 
 export function TopNav() {
   const { profile, isS2Admin } = usePermissions();
+  // Request Unit Access dialog state
+  const [requestUnitOpen, setRequestUnitOpen] = useState(false);
+  const [requestUnitId, setRequestUnitId] = useState("");
+  const [requestUnitReason, setRequestUnitReason] = useState("");
   const { mode: networkMode } = useNetworkMode();
   const { clear, identity } = useInternetIdentity();
   const { actor, isFetching } = useActor();
@@ -1048,14 +1062,6 @@ export function TopNav() {
                 onClick={() => setProfileSheetOpen(true)}
               >
                 <User className="mr-2 h-3.5 w-3.5" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                data-ocid="topnav.my_profile.link"
-                className="cursor-pointer font-mono text-xs uppercase tracking-widest text-slate-300 hover:text-white focus:text-white"
-                onClick={() => void navigate({ to: "/my-profile" })}
-              >
-                <ExternalLink className="mr-2 h-3.5 w-3.5" />
                 My Profile
               </DropdownMenuItem>
               {isS2Admin && (
@@ -1068,6 +1074,14 @@ export function TopNav() {
                   Admin Panel
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                data-ocid="topnav.request_unit_access.open_modal_button"
+                className="cursor-pointer font-mono text-xs uppercase tracking-widest text-slate-300 hover:text-white focus:text-white"
+                onClick={() => setRequestUnitOpen(true)}
+              >
+                <Building2 className="mr-2 h-3.5 w-3.5" />
+                Request Unit Access
+              </DropdownMenuItem>
               <DropdownMenuSeparator style={{ backgroundColor: "#1a2235" }} />
               <DropdownMenuItem
                 data-ocid="topnav.signout.button"
@@ -1081,6 +1095,84 @@ export function TopNav() {
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Request Unit Access Dialog */}
+      <Dialog open={requestUnitOpen} onOpenChange={setRequestUnitOpen}>
+        <DialogContent
+          data-ocid="topnav.request_unit_access.dialog"
+          className="border-border bg-card sm:max-w-md"
+          style={{ backgroundColor: "#0f1626", borderColor: "#1a2235" }}
+        >
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm uppercase tracking-wider text-white">
+              Request Access to Another Unit
+            </DialogTitle>
+            <DialogDescription className="font-mono text-xs text-slate-400">
+              Enter the UIC or organization name of the unit you want to access.
+              The unit&apos;s S2 administrator will review your request.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                UIC or Organization Name *
+              </Label>
+              <Input
+                data-ocid="topnav.request_unit_access.input"
+                value={requestUnitId}
+                onChange={(e) => setRequestUnitId(e.target.value)}
+                placeholder="UIC (e.g. WH9RT0) or Organization Name"
+                className="border bg-[#0a111f] font-mono text-sm text-white"
+                style={{ borderColor: "#1a2235" }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                Reason (optional)
+              </Label>
+              <Textarea
+                value={requestUnitReason}
+                onChange={(e) => setRequestUnitReason(e.target.value)}
+                placeholder="Reason for access request (optional)"
+                rows={3}
+                className="border bg-[#0a111f] font-mono text-xs text-white resize-none"
+                style={{ borderColor: "#1a2235" }}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="border-border font-mono text-xs uppercase tracking-wider"
+              onClick={() => {
+                setRequestUnitOpen(false);
+                setRequestUnitId("");
+                setRequestUnitReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              data-ocid="topnav.request_unit_access.submit_button"
+              disabled={!requestUnitId.trim()}
+              className="bg-amber-500 font-mono text-xs font-bold uppercase tracking-wider text-black hover:bg-amber-400 disabled:opacity-40"
+              onClick={() => {
+                toast.success(
+                  "Access request submitted. The unit’s S2 will be notified.",
+                  {
+                    description: `Request for: ${requestUnitId}`,
+                  },
+                );
+                setRequestUnitOpen(false);
+                setRequestUnitId("");
+                setRequestUnitReason("");
+              }}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

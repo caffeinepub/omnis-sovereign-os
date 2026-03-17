@@ -13,13 +13,21 @@ interface SessionWarningDialogProps {
   open: boolean;
   onStayLoggedIn: () => void;
   onLogOut: () => void;
+  tierLabel?: string;
+  minutesRemaining?: number;
 }
 
 export function SessionWarningDialog({
   open,
   onStayLoggedIn,
   onLogOut,
+  tierLabel,
+  minutesRemaining,
 }: SessionWarningDialogProps) {
+  const defaultMsg = minutesRemaining
+    ? `Your session will expire in ${minutesRemaining} minute${minutesRemaining !== 1 ? "s" : ""}.`
+    : "Your session will expire in 5 minutes.";
+
   return (
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent
@@ -33,9 +41,13 @@ export function SessionWarningDialog({
             <AlertTriangle className="h-5 w-5 text-amber-DEFAULT" />
             Session Expiring Soon
           </DialogTitle>
-          <DialogDescription className="text-muted-foreground">
-            You&apos;ve been inactive for 20 minutes. Your session will expire
-            in 2 minutes.
+          <DialogDescription className="space-y-1 text-muted-foreground">
+            <span className="block">{defaultMsg}</span>
+            {tierLabel && (
+              <span className="block text-xs text-muted-foreground/70">
+                {tierLabel}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">

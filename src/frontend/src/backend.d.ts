@@ -347,10 +347,10 @@ export interface backendInterface {
     createBroadcastMessage(message: BroadcastMessage): Promise<string>;
     getBroadcastMessages(): Promise<Array<BroadcastMessage>>;
     markBroadcastRead(messageId: string): Promise<void>;
-    // Presence
-    setPresence(status: string): Promise<void>;
-    getPresence(userId: Principal): Promise<UserPresence | null>;
-    getOrgPresence(): Promise<Array<UserPresence>>;
+    // Presence (optional — may not be implemented on all backend versions)
+    setPresence?(status: string): Promise<void>;
+    getPresence?(userId: Principal): Promise<UserPresence | null>;
+    getOrgPresence?(): Promise<Array<UserPresence>>;
     // Calendar
     createCalendarEvent(event: CalendarEvent): Promise<string>;
     getCalendarEvents(orgId: string): Promise<Array<CalendarEvent>>;

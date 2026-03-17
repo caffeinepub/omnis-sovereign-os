@@ -161,21 +161,33 @@ interface ChecklistStep {
 const CHECKLIST_STEPS: ChecklistStep[] = [
   {
     num: 1,
-    label: "Validate Commander Code",
-    to: "/validate-commander",
+    label: "Configure Network Mode (NIPR/SIPR or Corporate)",
+    to: "/network-mode-setup",
     ocid: "hub.s2_checklist.validate.link",
   },
   {
     num: 2,
-    label: "Create Sections & Folders",
-    to: "/documents",
+    label: "Approve Pending Personnel",
+    to: "/admin",
     ocid: "hub.s2_checklist.folders.link",
   },
   {
     num: 3,
-    label: "Assign Clearance Levels",
-    to: "/personnel",
+    label: "Invite or Await Commander Claim",
+    to: "/claim-commander",
     ocid: "hub.s2_checklist.clearances.link",
+  },
+  {
+    num: 4,
+    label: "Review Classification Levels",
+    to: "/settings",
+    ocid: "hub.s2_checklist.settings.link",
+  },
+  {
+    num: 5,
+    label: "Verify First Personnel Record",
+    to: "/personnel",
+    ocid: "hub.s2_checklist.personnel.link",
   },
 ];
 
@@ -196,9 +208,13 @@ export default function HubPage() {
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
-  const [checklistDismissed, setChecklistDismissed] = useState(
-    () => localStorage.getItem("omnis_s2_checklist_dismissed") === "true",
-  );
+  const [checklistDismissed, setChecklistDismissed] = useState(() => {
+    const principalId = localStorage.getItem("omnis_principal") ?? "unknown";
+    return (
+      localStorage.getItem(`omnis_s2_checklist_dismissed_${principalId}`) ===
+      "true"
+    );
+  });
   const [isCallerAdminFlag, setIsCallerAdminFlag] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
   // Bootstrap code claim
@@ -335,11 +351,11 @@ export default function HubPage() {
     !welcomeDismissed &&
     !isCallerAdminFlag &&
     !isS2Admin;
-  const showS2Checklist =
-    isS2Admin && !profile?.isValidatedByCommander && !checklistDismissed;
+  const showS2Checklist = isS2Admin && !checklistDismissed;
 
   function handleDismissChecklist() {
-    localStorage.setItem("omnis_s2_checklist_dismissed", "true");
+    const principalId = identity?.getPrincipal().toString() ?? "unknown";
+    localStorage.setItem(`omnis_s2_checklist_dismissed_${principalId}`, "true");
     setChecklistDismissed(true);
   }
   const showRecoveryPanel = isCallerAdminFlag && !isS2Admin;
@@ -581,9 +597,14 @@ export default function HubPage() {
               }}
             >
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-amber-400">
-                  S2 Setup Required
-                </h2>
+                <div>
+                  <h2 className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-amber-400">
+                    S2 Admin Setup Checklist
+                  </h2>
+                  <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-400/50">
+                    Complete these steps to fully activate your workspace.
+                  </p>
+                </div>
                 <button
                   type="button"
                   data-ocid="hub.s2_checklist.close_button"

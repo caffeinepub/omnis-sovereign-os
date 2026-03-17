@@ -1,14 +1,13 @@
-import type { backendInterface as ExtBackend } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
-import { useActor } from "@/hooks/useActor";
+import { useExtActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 export default function ValidateCommanderPage() {
-  const { actor } = useActor();
+  const { actor, isFetching } = useExtActor();
   const { identity } = useInternetIdentity();
   const navigate = useNavigate();
 
@@ -17,7 +16,7 @@ export default function ValidateCommanderPage() {
   const [success, setSuccess] = useState(false);
 
   const handleActivate = async () => {
-    if (!actor || !identity) {
+    if (!actor || !identity || isFetching) {
       setError("Session not ready. Please sign out and sign in again.");
       return;
     }
@@ -27,10 +26,8 @@ export default function ValidateCommanderPage() {
 
     try {
       const principal = identity.getPrincipal();
-      const ext = actor as unknown as ExtBackend;
-
       // Get current profile to preserve existing fields
-      const profile = await ext.getMyProfile();
+      const profile = await actor.getMyProfile();
 
       // Update profile to set S2 admin flags.
       // Uses updateMyProfile (requires #user role only) rather than
@@ -64,7 +61,7 @@ export default function ValidateCommanderPage() {
         unitPhone: "",
       };
 
-      await ext.updateMyProfile({
+      await actor.updateMyProfile({
         ...baseProfile,
         principalId: principal,
         isS2Admin: true,
@@ -76,7 +73,7 @@ export default function ValidateCommanderPage() {
 
       // Log governance event (non-blocking)
       try {
-        await ext.logGovernanceEvent({
+        await actor.logGovernanceEvent({
           recordId: crypto.randomUUID(),
           eventType: "s2_activation",
           description: "S2 Admin role activated (founding administrator)",

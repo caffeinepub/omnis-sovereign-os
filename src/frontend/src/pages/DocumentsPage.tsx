@@ -10,6 +10,7 @@ import { ClassificationBadge } from "@/components/shared/ClassificationBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormError } from "@/components/shared/FormError";
+import { SIPRReauthDialog } from "@/components/shared/SIPRReauthDialog";
 import { SkeletonCard } from "@/components/shared/SkeletonCard";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,11 +40,13 @@ import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
+  Building2,
   ChevronDown,
   ChevronRight,
   Download,
   FileText,
   Loader2,
+  Plus,
   Shield,
   Trash2,
   Upload,
@@ -811,6 +814,27 @@ export default function DocumentsPage() {
             borderColor: "#1a2235",
           }}
         >
+          {/* UIC Section Header */}
+          {(() => {
+            const currentUIC =
+              localStorage.getItem("omnis_selected_uic") || "Primary Workspace";
+            return (
+              <div
+                className="px-3 pt-2.5 pb-2 border-b"
+                style={{ borderColor: "#1a2235" }}
+              >
+                <div
+                  className="flex items-center gap-1.5"
+                  style={{ color: "oklch(0.75 0.15 70 / 0.8)" }}
+                >
+                  <Building2 className="w-3 h-3 shrink-0" />
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider truncate">
+                    {currentUIC}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
           {/* Sidebar header */}
           <div
             className="flex items-center px-4 py-3 border-b"
@@ -901,6 +925,22 @@ export default function DocumentsPage() {
               </div>
             )}
           </ScrollArea>
+          {/* Multi-UIC Access Stub */}
+          <div
+            className="px-3 pt-3 pb-3 border-t"
+            style={{ borderColor: "#0f1626" }}
+          >
+            <div
+              className="flex items-center gap-2 cursor-pointer transition-colors"
+              style={{ color: "rgba(255,255,255,0.25)" }}
+              title="Cross-UIC access coming soon"
+            >
+              <Plus className="w-3 h-3 shrink-0" />
+              <span className="font-mono text-[10px] font-medium uppercase tracking-wider hover:text-white/50 transition-colors">
+                Request UIC Access
+              </span>
+            </div>
+          </div>
         </aside>
 
         {/* ── Main Content ─────────────────────────────────────────────────── */}
@@ -1067,6 +1107,23 @@ function DocumentListContent({
   onDelete,
   noFolderSelected = false,
 }: DocumentListContentProps) {
+  // SIPR re-auth state — must be declared before any early returns (React rules)
+  const [siprPendingDoc, setSiprPendingDoc] = useState<Document | null>(null);
+  const [siprVerifiedIds, setSiprVerifiedIds] = useState<Set<string>>(
+    new Set(),
+  );
+
+  function handleDownloadClick(doc: Document) {
+    const level = Number(doc.classificationLevel);
+    const isClassified = level >= 2; // Secret (2) and above require re-auth
+    if (isClassified && !siprVerifiedIds.has(doc.id)) {
+      setSiprPendingDoc(doc);
+    } else {
+      // Placeholder: real download from blobStorageKey would go here
+      toast.info("Download initiated");
+    }
+  }
+
   if (noFolderSelected) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -1090,98 +1147,123 @@ function DocumentListContent({
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div
-        data-ocid="documents.list.table"
-        className="divide-y"
-        style={{ borderColor: "#1a2235" }}
-      >
-        {/* Header row */}
-        <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-3 px-5 py-2">
-          {["Name", "Class.", "Ver.", "Uploaded By", "Date", "Size", ""].map(
-            (h) => (
-              <span
-                key={h}
-                className="font-mono text-[9px] uppercase tracking-[0.15em] text-slate-600"
-              >
-                {h}
-              </span>
-            ),
-          )}
-        </div>
-
-        {documents.map((doc, idx) => {
-          const isOwner =
-            callerPrincipal &&
-            doc.uploadedBy.toString() === callerPrincipal.toString();
-          const canDelete = isOwner || isS2Admin;
-          const uploaderName = getProfileName(profiles, doc.uploadedBy);
-
-          return (
-            <div
-              key={doc.id}
-              data-ocid={`documents.list.row.${idx + 1}`}
-              className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02]"
-            >
-              {/* Name */}
-              <span className="min-w-0 truncate font-mono text-xs text-white">
-                {doc.name}
-              </span>
-
-              {/* Classification badge */}
-              <ClassificationBadge level={Number(doc.classificationLevel)} />
-
-              {/* Version */}
-              <span className="font-mono text-[10px] text-slate-500">
-                v{Number(doc.version)}
-              </span>
-
-              {/* Uploader */}
-              <span className="max-w-[120px] truncate font-mono text-[10px] text-slate-400">
-                {uploaderName}
-              </span>
-
-              {/* Date */}
-              <span className="font-mono text-[10px] text-slate-500">
-                {formatDate(doc.uploadedAt)}
-              </span>
-
-              {/* Size */}
-              <span className="font-mono text-[10px] text-slate-500">
-                {formatFileSize(doc.fileSize)}
-              </span>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  data-ocid={`documents.download.button.${idx + 1}`}
-                  className="h-7 w-7 p-0 text-slate-500 hover:text-amber-400"
-                  disabled={!doc.blobStorageKey}
-                  title={doc.blobStorageKey ? "Download" : "No file attached"}
+    <>
+      <SIPRReauthDialog
+        open={!!siprPendingDoc}
+        documentTitle={siprPendingDoc?.name ?? ""}
+        onConfirm={() => {
+          if (siprPendingDoc) {
+            setSiprVerifiedIds((prev) => new Set([...prev, siprPendingDoc.id]));
+            setSiprPendingDoc(null);
+            toast.info("Identity verified. Download initiated.");
+          }
+        }}
+        onCancel={() => setSiprPendingDoc(null)}
+      />
+      <ScrollArea className="h-full">
+        <div
+          data-ocid="documents.list.table"
+          className="divide-y"
+          style={{ borderColor: "#1a2235" }}
+        >
+          {/* Header row */}
+          <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-3 px-5 py-2">
+            {["Name", "Class.", "Ver.", "Uploaded By", "Date", "Size", ""].map(
+              (h) => (
+                <span
+                  key={h}
+                  className="font-mono text-[9px] uppercase tracking-[0.15em] text-slate-600"
                 >
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-                {canDelete && (
+                  {h}
+                </span>
+              ),
+            )}
+          </div>
+
+          {documents.map((doc, idx) => {
+            const isOwner =
+              callerPrincipal &&
+              doc.uploadedBy.toString() === callerPrincipal.toString();
+            const canDelete = isOwner || isS2Admin;
+            const uploaderName = getProfileName(profiles, doc.uploadedBy);
+            const level = Number(doc.classificationLevel);
+            const needsReauth = level >= 2 && !siprVerifiedIds.has(doc.id);
+
+            return (
+              <div
+                key={doc.id}
+                data-ocid={`documents.list.row.${idx + 1}`}
+                className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02]"
+              >
+                {/* Name */}
+                <span className="min-w-0 truncate font-mono text-xs text-white">
+                  {doc.name}
+                </span>
+
+                {/* Classification badge */}
+                <ClassificationBadge level={level} />
+
+                {/* Version */}
+                <span className="font-mono text-[10px] text-slate-500">
+                  v{Number(doc.version)}
+                </span>
+
+                {/* Uploader */}
+                <span className="max-w-[120px] truncate font-mono text-[10px] text-slate-400">
+                  {uploaderName}
+                </span>
+
+                {/* Date */}
+                <span className="font-mono text-[10px] text-slate-500">
+                  {formatDate(doc.uploadedAt)}
+                </span>
+
+                {/* Size */}
+                <span className="font-mono text-[10px] text-slate-500">
+                  {formatFileSize(doc.fileSize)}
+                </span>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    data-ocid={`documents.delete.open_modal_button.${idx + 1}`}
-                    className="h-7 w-7 p-0 text-slate-500 hover:text-red-400"
-                    onClick={() => onDelete(doc)}
-                    title="Delete document"
+                    data-ocid={`documents.download.button.${idx + 1}`}
+                    className="h-7 w-7 p-0 text-slate-500 hover:text-amber-400"
+                    disabled={!doc.blobStorageKey}
+                    title={
+                      !doc.blobStorageKey
+                        ? "No file attached"
+                        : needsReauth
+                          ? "Identity verification required"
+                          : "Download"
+                    }
+                    onClick={() =>
+                      doc.blobStorageKey && handleDownloadClick(doc)
+                    }
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Download className="h-3.5 w-3.5" />
                   </Button>
-                )}
+                  {canDelete && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-ocid={`documents.delete.open_modal_button.${idx + 1}`}
+                      className="h-7 w-7 p-0 text-slate-500 hover:text-red-400"
+                      onClick={() => onDelete(doc)}
+                      title="Delete document"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </ScrollArea>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </>
   );
 }

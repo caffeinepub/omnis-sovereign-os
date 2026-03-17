@@ -44,6 +44,7 @@ function inferBranchCategory(rank: string): {
   }
   return { branch: "", category: "" };
 }
+import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
@@ -62,6 +63,9 @@ export default function MyProfilePage() {
     refreshProfile,
     isLoading,
   } = usePermissions();
+  const { mode: networkMode } = useNetworkMode();
+  const isCorporateMode =
+    networkMode === "corporate-standard" || networkMode === "corporate-secure";
   const { actor } = useActor();
   const { identity } = useInternetIdentity();
   const { client: storageClient, isReady: storageReady } = useStorageClient(
@@ -529,16 +533,51 @@ export default function MyProfilePage() {
                   </div>
                 </div>
 
-                {/* Rank selector */}
-                <RankSelector
-                  branch={branch}
-                  category={category}
-                  rank={rankVal}
-                  onBranchChange={setBranch}
-                  onCategoryChange={setCategory}
-                  onRankChange={setRankVal}
-                  variant="modal"
-                />
+                {/* Rank selector (military) / Job Title + Department (corporate) */}
+                {isCorporateMode ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                        Job Title
+                      </Label>
+                      <Input
+                        value={rankVal}
+                        onChange={(e) => setRankVal(e.target.value)}
+                        placeholder="e.g. Senior Engineer"
+                        className="border font-mono text-xs text-white"
+                        style={{
+                          backgroundColor: "#1a2235",
+                          borderColor: "#2a3347",
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                        Department
+                      </Label>
+                      <Input
+                        value={branch}
+                        onChange={(e) => setBranch(e.target.value)}
+                        placeholder="e.g. Engineering"
+                        className="border font-mono text-xs text-white"
+                        style={{
+                          backgroundColor: "#1a2235",
+                          borderColor: "#2a3347",
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <RankSelector
+                    branch={branch}
+                    category={category}
+                    rank={rankVal}
+                    onBranchChange={setBranch}
+                    onCategoryChange={setCategory}
+                    onRankChange={setRankVal}
+                    variant="modal"
+                  />
+                )}
 
                 {/* Email */}
                 <div className="space-y-1.5">

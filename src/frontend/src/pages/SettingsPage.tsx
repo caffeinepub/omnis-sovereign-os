@@ -8,12 +8,15 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Switch } from "@/components/ui/switch";
 import { CLEARANCE_LABELS, NETWORK_MODE_CONFIGS } from "@/config/constants";
 import { useNetworkMode } from "@/contexts/NetworkModeContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
+  Bell,
   Building2,
   Clock,
   Globe,
@@ -22,6 +25,7 @@ import {
   Shield,
   User,
 } from "lucide-react";
+import { useState } from "react";
 
 function SectionCard({
   icon,
@@ -108,10 +112,78 @@ const SENSITIVITY_LABELS: Record<string, { label: string; color: string }> = {
   maximum: { label: "Maximum", color: "#ef4444" },
 };
 
+const NOTIFICATION_PREFS = [
+  {
+    key: "security_alerts",
+    label: "Security Alerts",
+    description: "Anomaly detections and access warnings",
+  },
+  {
+    key: "announcements",
+    label: "Announcements",
+    description: "Broadcasts from S2 and command",
+  },
+  {
+    key: "direct_messages",
+    label: "Direct Messages",
+    description: "Private and group messages",
+  },
+  {
+    key: "task_assignments",
+    label: "Task Assignments",
+    description: "New tasks assigned to you",
+  },
+  {
+    key: "system_events",
+    label: "System Events",
+    description: "Platform and canister updates",
+  },
+  {
+    key: "access_requests",
+    label: "Access Requests",
+    description: "Cross-UIC access requests",
+  },
+] as const;
+
+type NotifPrefKey = (typeof NOTIFICATION_PREFS)[number]["key"];
+
+function getDefaultNotifPrefs(): Record<NotifPrefKey, boolean> {
+  return {
+    security_alerts: true,
+    announcements: true,
+    direct_messages: true,
+    task_assignments: true,
+    system_events: true,
+    access_requests: true,
+  };
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { profile, clearanceLevel, isS2Admin } = usePermissions();
   const { mode: networkMode, isSet: networkModeIsSet } = useNetworkMode();
+  const { identity } = useInternetIdentity();
+
+  const principalId = identity?.getPrincipal().toString() ?? "unknown";
+  const notifStorageKey = `omnis_notification_prefs_${principalId}`;
+
+  const [notifPrefs, setNotifPrefs] = useState<Record<NotifPrefKey, boolean>>(
+    () => {
+      try {
+        const stored = localStorage.getItem(notifStorageKey);
+        if (stored) return { ...getDefaultNotifPrefs(), ...JSON.parse(stored) };
+      } catch {
+        /* ignore */
+      }
+      return getDefaultNotifPrefs();
+    },
+  );
+
+  function toggleNotifPref(key: NotifPrefKey, value: boolean) {
+    const next = { ...notifPrefs, [key]: value };
+    setNotifPrefs(next);
+    localStorage.setItem(notifStorageKey, JSON.stringify(next));
+  }
 
   const clearanceLabel =
     CLEARANCE_LABELS[clearanceLevel] ?? `Level ${clearanceLevel}`;
@@ -369,6 +441,47 @@ export default function SettingsPage() {
                 Requires a future Motoko backend update (Organization entity,
                 orgId scoping on all queries).
               </p>
+            </div>
+          </SectionCard>
+
+          {/* ── Notifications ─────────────────────────────────────────── */}
+          <SectionCard
+            icon={<Bell className="h-4 w-4" />}
+            title="Notifications"
+            data-ocid="settings.notifications.section"
+          >
+            <div className="space-y-4">
+              <p className="font-mono text-[10px] leading-relaxed text-slate-500">
+                Choose which notification types you receive. Changes are saved
+                immediately and stored locally.
+              </p>
+              <div className="space-y-3">
+                {NOTIFICATION_PREFS.map((pref) => (
+                  <div
+                    key={pref.key}
+                    className="flex items-center justify-between gap-4 rounded border px-4 py-3"
+                    style={{
+                      borderColor: "#1a2235",
+                      backgroundColor: "#0a111f",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-medium uppercase tracking-wider text-white">
+                        {pref.label}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-slate-500">
+                        {pref.description}
+                      </p>
+                    </div>
+                    <Switch
+                      data-ocid={`settings.notifications.${pref.key}.switch`}
+                      checked={notifPrefs[pref.key]}
+                      onCheckedChange={(v) => toggleNotifPref(pref.key, v)}
+                      className="shrink-0"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </SectionCard>
         </div>

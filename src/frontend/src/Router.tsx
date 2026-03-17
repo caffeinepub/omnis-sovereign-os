@@ -2,7 +2,10 @@ import type { backendInterface as ExtBackend } from "@/backend.d";
 import { SessionWarningDialog } from "@/components/auth/SessionWarningDialog";
 import { CommanderValidationBanner } from "@/components/layout/CommanderValidationBanner";
 import { CommandPalette } from "@/components/shared/CommandPalette";
-import { NetworkModeProvider } from "@/contexts/NetworkModeContext";
+import {
+  NetworkModeProvider,
+  useNetworkMode,
+} from "@/contexts/NetworkModeContext";
 import {
   PermissionsProvider,
   usePermissions,
@@ -10,6 +13,13 @@ import {
 import { useExtActor as useActor } from "@/hooks/useExtActor";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import {
+  type SessionUserRole,
+  getExpireAfterMs,
+  getTierLabel,
+  getTimeoutMs,
+  getWarnAfterMs,
+} from "@/lib/sessionTimeout";
 import {
   Outlet,
   RouterProvider,
@@ -79,24 +89,25 @@ function AuthenticatedLayout() {
   const isAuthenticated = !!identity && !identity.getPrincipal().isAnonymous();
   const { actor } = useActor();
 
-  // Set Online presence when authenticated
+  // Set Online presence when authenticated (guard: function may not exist on backend)
   useEffect(() => {
-    if (isAuthenticated && actor) {
-      void (actor as unknown as ExtBackend)
-        .setPresence("Online")
-        .catch(() => {});
+    if (
+      isAuthenticated &&
+      actor &&
+      typeof (actor as any).setPresence === "function"
+    ) {
+      void (actor as unknown as ExtBackend).setPresence!("Online").catch(
+        () => {},
+      );
     }
   }, [isAuthenticated, actor]);
 
   // Hard-reload logout: call authClient.logout() then immediately navigate to
   // /login via window.location so the entire React tree (including the
-  // AuthClient instance) is rebuilt from scratch. This prevents the race where
-  // clear() sets authClient→undefined, the init useEffect re-runs, briefly
-  // sets loginStatus to "initializing", and leaves the Sign In button disabled.
+  // AuthClient instance) is rebuilt from scratch.
   const handleLogOut = () => {
-    if (actor) {
-      void (actor as unknown as ExtBackend)
-        .setPresence("Offline")
+    if (actor && typeof (actor as any).setPresence === "function") {
+      void (actor as unknown as ExtBackend).setPresence!("Offline")
         .catch(() => {})
         .finally(() => {
           clear();
@@ -108,27 +119,7 @@ function AuthenticatedLayout() {
     }
   };
 
-  // Idle timer — only active while a real (non-anonymous) identity is present.
-  // Warns at 20 min, expires at 22 min. Wires into the existing
-  // SessionWarningDialog via showIdleWarning state.
-  useIdleTimer({
-    onWarn: () => {
-      if (isAuthenticated) setShowIdleWarning(true);
-    },
-    onExpire: () => {
-      if (isAuthenticated) {
-        setShowIdleWarning(false);
-        clear();
-        window.location.href = "/login";
-      }
-    },
-    warnAfterMs: 20 * 60 * 1000,
-    expireAfterMs: 22 * 60 * 1000,
-  });
-
   useEffect(() => {
-    // Redirect to login if: not initializing AND no identity present
-    // This covers both the normal logout case and the post-clear idle state
     if (
       !isInitializing &&
       (!identity || identity.getPrincipal().isAnonymous())
@@ -137,7 +128,6 @@ function AuthenticatedLayout() {
     }
   }, [identity, isInitializing, router]);
 
-  // Show initializing only briefly — if idle with no identity, don't block
   if (isInitializing && !isLoginIdle) {
     return (
       <div
@@ -157,16 +147,89 @@ function AuthenticatedLayout() {
 
   return (
     <PermissionsProvider>
-      <CommanderValidationBanner />
-      <Outlet />
-      <CommandPalette />
-      {/* Idle warning from useIdleTimer (20-min inactivity) */}
-      <SessionWarningDialog
-        open={showIdleWarning}
+      <IdleTimerInner
+        isAuthenticated={isAuthenticated}
+        onWarn={() => {
+          if (isAuthenticated) setShowIdleWarning(true);
+        }}
+        onExpire={() => {
+          if (isAuthenticated) {
+            setShowIdleWarning(false);
+            clear();
+            window.location.href = "/login";
+          }
+        }}
+        showWarning={showIdleWarning}
         onStayLoggedIn={() => setShowIdleWarning(false)}
         onLogOut={handleLogOut}
       />
+      <CommanderValidationBanner />
+      <Outlet />
+      <CommandPalette />
     </PermissionsProvider>
+  );
+}
+
+// Inner component that can access PermissionsContext and NetworkModeContext
+interface IdleTimerInnerProps {
+  isAuthenticated: boolean;
+  onWarn: () => void;
+  onExpire: () => void;
+  showWarning: boolean;
+  onStayLoggedIn: () => void;
+  onLogOut: () => void;
+}
+
+function IdleTimerInner({
+  isAuthenticated,
+  onWarn,
+  onExpire,
+  showWarning,
+  onStayLoggedIn,
+  onLogOut,
+}: IdleTimerInnerProps) {
+  const { isS2Admin, profile } = usePermissions();
+  const { mode: networkMode } = useNetworkMode();
+
+  // Only run idle timer for fully approved users
+  const isApproved =
+    isAuthenticated &&
+    !!profile &&
+    (profile.registrationStatus === "Approved" ||
+      profile.registrationStatus === "Active" ||
+      profile.isS2Admin);
+
+  const role: SessionUserRole = !isApproved
+    ? "guest"
+    : isS2Admin
+      ? "s2admin"
+      : "user";
+
+  const timeoutMs = getTimeoutMs(role, networkMode ?? undefined);
+  // When no timeout (guest), use very large numbers so the timer effectively
+  // never fires.
+  const warnAfterMs =
+    timeoutMs > 0 ? getWarnAfterMs(timeoutMs) : 24 * 60 * 60 * 1000;
+  const expireAfterMs =
+    timeoutMs > 0 ? getExpireAfterMs(timeoutMs) : 25 * 60 * 60 * 1000;
+
+  const tierLabel = getTierLabel(role, networkMode ?? undefined);
+
+  useIdleTimer({
+    onWarn,
+    onExpire,
+    warnAfterMs,
+    expireAfterMs,
+  });
+
+  return (
+    <SessionWarningDialog
+      open={showWarning}
+      onStayLoggedIn={onStayLoggedIn}
+      onLogOut={onLogOut}
+      tierLabel={isApproved ? tierLabel : undefined}
+      minutesRemaining={5}
+    />
   );
 }
 
