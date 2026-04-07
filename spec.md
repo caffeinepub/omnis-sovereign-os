@@ -1,43 +1,36 @@
-# Omnis Sovereign OS — Step B: Network Mode Selector
+# Omnis Sovereign OS
 
 ## Current State
-
-The platform has no concept of deployment network mode. All users see identical UI terminology regardless of whether they are a military unit (NIPR/SIPR) or a corporate organization (Standard/Secure). Network mode was discussed in planning as a key differentiator but has never been implemented.
-
-The codebase has:
-- No NetworkMode type or context
-- No first-run setup flow for selecting mode
-- All classification/clearance labels hardcoded as UNCLASSIFIED, CUI, SECRET, TOP SECRET, TS/SCI
-- No storage or retrieval of mode preference
-- Settings page has a static "Display" section with no mode control
-- Governance and Settings pages are functional stubs
+The frontend has 100+ functions defined in backend.d.ts but the deployed Motoko backend only implements the base authorization mixin (~5 functions). All calls to registerProfile, getMyProfile, validateS2Admin, etc. fail at runtime. The S2 bootstrap is completely blocked because validateS2Admin requires admin role but new users are registered as #user with no path to become admin.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `NetworkModeContext` — React context providing the current network mode (`military-nipr` | `military-sipr` | `corporate-standard` | `corporate-secure`) and a setter. Persisted to `localStorage` under `omnis_network_mode`.
-- `NetworkModeSetupPage` — A first-run/S2-accessible page (`/network-mode-setup`) where an S2 admin or the system owner can select the deployment network mode. Shows the four options with descriptions, visual distinction between Military and Corporate groups. Not nested under AuthenticatedLayout (accessible during initial setup). Also accessible from Settings for S2 admins post-setup.
-- Network mode display badge in `TopNav` — a small pill badge next to the OMNIS wordmark showing the current mode (e.g., `NIPR`, `SIPR`, `STANDARD`, `SECURE`). Hidden if mode is not yet set.
-- `useNetworkMode` hook — convenience wrapper for the context.
-- Network mode card in `SettingsPage` — shows the current mode, what it means, and (for S2 admins) a link to change it.
+- `bootstrapFirstAdmin()` function: callable by anyone, grants caller #admin role only if no admins have been assigned yet (adminAssigned == false in accessControlState), then sets adminAssigned = true. This is the solo bootstrap path.
+- All profile CRUD functions: registerProfile, getMyProfile, updateMyProfile, getAllProfiles, getProfileByPrincipal, updateUserProfile, updateRegistrationStatus, getPendingUsers, getDeniedUsers
+- All section/folder/document functions: createSection, getSections, getSection, updateSection, deleteSection, createFolder, getAllFolders, getFolder, getFoldersBySection, getMyFolders, updateFolder, deleteFolder, setFolderPermission, batchSetFolderPermissions, getFolderPermissions, getMyFolderPermission, revokeFolderPermission, createDocument, getDocument, getDocumentsByFolder, updateDocument, deleteDocument, setDocumentAccessList, getDocumentAccessList, addDocumentAccess, removeDocumentAccess, createDocumentVersion, getDocumentVersions, updateDocumentStatus, incrementDocumentDownloadCount
+- All messaging: sendMessage, getInboxMessages, getSentMessages, getMessage, replyToMessage, markMessageRead, deleteMessage, createMessageGroup, getMessageGroup, deleteMessageGroup, getMyMessageGroups, sendGroupMessage, getGroupMessages, markGroupMessageRead, createBroadcastMessage, getBroadcastMessages, markBroadcastRead
+- Notifications: getMyNotifications, markNotificationRead, markAllNotificationsRead, getUnreadNotificationCount, createSystemNotification
+- Organization: createOrganization, getOrganization, getOrganizationByUIC, updateOrganization, requestOrgAccess, approveOrgAccess, denyOrgAccess, getOrgAccessRequests
+- Role approvals: createRoleApprovalRequest, approveRoleRequest, denyRoleRequest, getRoleApprovalRequests, getRoleApprovalPool, submitTpiApproval
+- Commander Auth Code: generateCommanderAuthCode, validateCommanderAuthCode, rotateCommanderAuthCode, getCommanderAuthCodeStatus
+- Calendar: createCalendarEvent, getCalendarEvents, updateCalendarEvent, deleteCalendarEvent, getMyCalendarEvents
+- Tasks: createTask, updateTask, deleteTask, getMyTasks, getOrgTasks, updateTaskStatus
+- Anomaly/AI: createAnomalyEvent, getAnomalyEvents, resolveAnomalyEvent, addKeywordWatch, removeKeywordWatch, getKeywordWatchList, flagAnomalyForEscalation, quarantineDocument, clearDocumentQuarantine
+- Governance: logGovernanceEvent, getGovernanceLog, getWasmHash
+- Presence: setPresence, getPresence, getOrgPresence
+- Session: registerActiveSession, invalidateOtherSessions, getPendingRegistrationExpiry
+- Platform stats: getPlatformStats
+- validateS2Admin: sets isS2Admin=true on target profile, requires caller to be admin
+- saveCallerUserProfile, getCallerUserProfile: simple profile helpers
 
 ### Modify
-- `constants.ts` — Add `NETWORK_MODE_LABELS`, `NETWORK_MODE_DESCRIPTIONS`, and a `getNetworkModeConfig(mode)` helper that returns the adapted terminology for classification labels, jargon, and monitoring sensitivity.
-- `SettingsPage` — Replace the static Display section content with a live Network Mode section showing mode-aware terminology. Add "Change Mode" link for S2 admins.
-- `Router.tsx` — Add `/network-mode-setup` route (outside of authRoute, like `/register`).
-- `LoginPage.tsx` / first-run flow — After completing registration, if no network mode is set, route to `/network-mode-setup` before onboarding. S2 admins can also access it from Settings.
-- `HubPage.tsx` — Show a one-time banner prompting S2 admin to set network mode if it hasn't been configured yet.
+- main.mo: implement all functions above using stable Maps already defined
 
 ### Remove
-- Nothing removed
+- Nothing
 
 ## Implementation Plan
-
-1. Add `NetworkModeContext.tsx` with four mode values, descriptions, localStorage persistence, and a `useNetworkMode` hook.
-2. Update `constants.ts` to add `NETWORK_MODE_CONFIGS` with Military NIPR, Military SIPR, Corporate Standard, Corporate Secure configs — each containing a label, short code, description, and classification terminology override.
-3. Build `NetworkModeSetupPage.tsx` — clean selection UI with two groups (Military, Corporate), mode cards, and a confirm button. Routes to `/onboarding` on completion.
-4. Add `/network-mode-setup` route to `Router.tsx` (outside authRoute).
-5. Add network mode badge to `TopNav` (beside OMNIS wordmark).
-6. Add network mode section to `SettingsPage` with current mode display and S2 admin change link.
-7. Add hub banner to `HubPage.tsx` prompting S2 admin to configure network mode if unset.
-8. Validate and build.
+1. Generate complete Motoko backend implementing all 100+ functions with bootstrapFirstAdmin() as the key addition
+2. Update frontend ValidateCommanderPage to call bootstrapFirstAdmin() before validateS2Admin
+3. Deploy and go live

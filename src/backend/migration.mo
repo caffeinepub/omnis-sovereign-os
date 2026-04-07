@@ -1,43 +1,20 @@
 import Map "mo:core/Map";
 import Principal "mo:core/Principal";
-import Time "mo:core/Time";
-import Iter "mo:core/Iter";
-import AccessControl "authorization/access-control";
-import MixinAuthorization "authorization/MixinAuthorization";
-import MixinStorage "blob-storage/Mixin";
-import Migration "migration";
-import Runtime "mo:core/Runtime";
-import Array "mo:core/Array";
-import Order "mo:core/Order";
-import Nat "mo:core/Nat";
 import Int "mo:core/Int";
-import Text "mo:core/Text";
+import Nat "mo:core/Nat";
+import Array "mo:core/Array";
+import Iter "mo:core/Iter";
+import List "mo:core/List";
 
-(with migration = Migration.run)
-actor {
-  type DocumentPermission = {
+module {
+  public type OldDocumentPermission = {
     #Owner;
     #Editor;
     #Viewer;
     #NoAccess;
   };
 
-  module DocumentPermission {
-    public func compare(p1 : DocumentPermission, p2 : DocumentPermission) : Order.Order {
-      Nat.compare(variantToNatIndex(p1), variantToNatIndex(p2));
-    };
-
-    func variantToNatIndex(perm : DocumentPermission) : Nat {
-      switch (perm) {
-        case (#Owner) { 0 };
-        case (#Editor) { 1 };
-        case (#Viewer) { 2 };
-        case (#NoAccess) { 3 };
-      };
-    };
-  };
-
-  public type UserProfile = {
+  public type OldUserProfile = {
     name : Text;
     email : Text;
     rank : Text;
@@ -45,7 +22,7 @@ actor {
     avatarUrl : ?Text;
   };
 
-  public type ExtendedProfile = {
+  public type OldExtendedProfile = {
     principalId : Principal;
     name : Text;
     rank : Text;
@@ -74,7 +51,7 @@ actor {
     unitPhone : Text;
   };
 
-  public type Section = {
+  public type OldSection = {
     id : Text;
     name : Text;
     description : Text;
@@ -84,7 +61,7 @@ actor {
     iconName : Text;
   };
 
-  public type Folder = {
+  public type OldFolder = {
     id : Text;
     sectionId : Text;
     name : Text;
@@ -96,16 +73,16 @@ actor {
     createdAt : Int;
   };
 
-  public type FolderPermission = {
+  public type OldFolderPermission = {
     folderId : Text;
     userId : Principal;
-    role : DocumentPermission;
+    role : OldDocumentPermission;
     needToKnow : Bool;
     grantedBy : Principal;
     grantedAt : Int;
   };
 
-  public type Document = {
+  public type OldDocument = {
     id : Text;
     folderId : Text;
     name : Text;
@@ -123,7 +100,7 @@ actor {
     orgId : Text;
   };
 
-  public type Notification = {
+  public type OldNotification = {
     id : Text;
     userId : Principal;
     notificationType : Text;
@@ -134,7 +111,7 @@ actor {
     metadata : ?Text;
   };
 
-  public type Message = {
+  public type OldMessage = {
     id : Text;
     fromUserId : Principal;
     toUserId : Principal;
@@ -146,7 +123,148 @@ actor {
     deleted : Bool;
   };
 
-  public type AnomalyEvent = {
+  public type OldAnomalyEvent = {
+    id : Text;
+    detectedAt : Int;
+    eventType : Text;
+    affectedUserId : ?Principal;
+    affectedFolderId : ?Text;
+    severity : Text;
+    description : Text;
+    resolved : Bool;
+    resolvedBy : ?Principal;
+    isSystemGenerated : Bool;
+  };
+
+  public type OldActor = {
+    userProfiles : Map.Map<Principal, OldUserProfile>;
+    profiles : Map.Map<Principal, OldExtendedProfile>;
+    sections : Map.Map<Text, OldSection>;
+    folders : Map.Map<Text, OldFolder>;
+    folderPermissions : Map.Map<Text, OldFolderPermission>;
+    documents : Map.Map<Text, OldDocument>;
+    notifications : Map.Map<Text, OldNotification>;
+    messages : Map.Map<Text, OldMessage>;
+    anomalyEvents : Map.Map<Text, OldAnomalyEvent>;
+  };
+
+  public type NewDocumentPermission = {
+    #Owner;
+    #Editor;
+    #Viewer;
+    #NoAccess;
+  };
+
+  public type NewUserProfile = {
+    name : Text;
+    email : Text;
+    rank : Text;
+    orgRole : Text;
+    avatarUrl : ?Text;
+  };
+
+  public type NewExtendedProfile = {
+    principalId : Principal;
+    name : Text;
+    rank : Text;
+    email : Text;
+    orgRole : Text;
+    clearanceLevel : Nat;
+    isS2Admin : Bool;
+    isValidatedByCommander : Bool;
+    registered : Bool;
+    avatarUrl : ?Text;
+    lastName : Text;
+    firstName : Text;
+    middleInitial : Text;
+    branch : Text;
+    rankCategory : Text;
+    dodId : Text;
+    mos : Text;
+    uic : Text;
+    orgId : Text;
+    registrationStatus : Text;
+    denialReason : Text;
+    verifiedBy : ?Principal;
+    verifiedAt : ?Nat;
+    clearanceExpiry : ?Nat;
+    networkEmail : Text;
+    unitPhone : Text;
+  };
+
+  public type NewSection = {
+    id : Text;
+    name : Text;
+    description : Text;
+    createdBy : Principal;
+    createdAt : Int;
+    parentSectionId : ?Text;
+    iconName : Text;
+  };
+
+  public type NewFolder = {
+    id : Text;
+    sectionId : Text;
+    name : Text;
+    description : Text;
+    isPersonal : Bool;
+    assignedUserId : ?Principal;
+    requiredClearanceLevel : Nat;
+    createdBy : Principal;
+    createdAt : Int;
+  };
+
+  public type NewFolderPermission = {
+    folderId : Text;
+    userId : Principal;
+    role : NewDocumentPermission;
+    needToKnow : Bool;
+    grantedBy : Principal;
+    grantedAt : Int;
+  };
+
+  public type NewDocument = {
+    id : Text;
+    folderId : Text;
+    name : Text;
+    description : Text;
+    uploadedBy : Principal;
+    uploadedAt : Int;
+    fileSize : Nat;
+    mimeType : Text;
+    blobStorageKey : ?Text;
+    classificationLevel : Nat;
+    version : Nat;
+    documentStatus : Text;
+    sha256Hash : Text;
+    downloadCount : Nat;
+    orgId : Text;
+  };
+
+  public type NewNotification = {
+    id : Text;
+    userId : Principal;
+    notificationType : Text;
+    title : Text;
+    body : Text;
+    read : Bool;
+    createdAt : Int;
+    metadata : ?Text;
+  };
+
+  public type NewMessage = {
+    id : Text;
+    fromUserId : Principal;
+    toUserId : Principal;
+    subject : Text;
+    body : Text;
+    sentAt : Int;
+    read : Bool;
+    parentMessageId : ?Text;
+    deleted : Bool;
+  };
+
+  public type NewAnomalyEvent = {
     id : Text;
     detectedAt : Int;
     eventType : Text;
@@ -211,7 +329,7 @@ actor {
   public type DocumentAccessEntry = {
     documentId : Text;
     userId : Principal;
-    accessLevel : DocumentPermission;
+    accessLevel : NewDocumentPermission;
     grantedBy : Principal;
     grantedAt : Int;
   };
@@ -344,13 +462,32 @@ actor {
     isActive : Bool;
   };
 
-  public type PlatformStats = {
-    totalUsers : Nat;
-    totalSections : Nat;
-    totalFolders : Nat;
-    totalDocuments : Nat;
-    unresolvedAnomalies : Nat;
-    totalMessages : Nat;
+  public type NewActor = {
+    userProfiles : Map.Map<Principal, NewUserProfile>;
+    profiles : Map.Map<Principal, NewExtendedProfile>;
+    sections : Map.Map<Text, NewSection>;
+    folders : Map.Map<Text, NewFolder>;
+    folderPermissions : Map.Map<Text, NewFolderPermission>;
+    documents : Map.Map<Text, NewDocument>;
+    notifications : Map.Map<Text, NewNotification>;
+    messages : Map.Map<Text, NewMessage>;
+    anomalyEvents : Map.Map<Text, NewAnomalyEvent>;
+    organizations : Map.Map<Text, Organization>;
+    orgAccessRequests : Map.Map<Text, OrgAccessRequest>;
+    documentVersions : Map.Map<Text, DocumentVersion>;
+    documentAccessEntries : Map.Map<Text, DocumentAccessEntry>;
+    messageGroups : Map.Map<Text, MessageGroup>;
+    groupMessages : Map.Map<Text, GroupMessage>;
+    broadcastMessages : Map.Map<Text, BroadcastMessage>;
+    calendarEvents : Map.Map<Text, CalendarEvent>;
+    tasks : Map.Map<Text, Task>;
+    keywordWatchList : Map.Map<Text, KeywordWatchEntry>;
+    governanceLog : Map.Map<Text, GovernanceRecord>;
+    presenceMap : Map.Map<Principal, UserPresence>;
+    activeSessions : Map.Map<Principal, Text>;
+    commanderAuthCode : Text;
+    commanderAuthCodeUsed : Bool;
+    roleApprovalRequests : Map.Map<Text, RoleApprovalRequest>;
   };
 
   public type RoleRequestStatus = {
@@ -386,34 +523,37 @@ actor {
     statusHistory : ?[Text];
   };
 
-  stable let userProfiles = Map.empty<Principal, UserProfile>();
-  stable let profiles = Map.empty<Principal, ExtendedProfile>();
-  stable let sections = Map.empty<Text, Section>();
-  stable let folders = Map.empty<Text, Folder>();
-  stable let folderPermissions = Map.empty<Text, FolderPermission>();
-  stable let documents = Map.empty<Text, Document>();
-  stable let notifications = Map.empty<Text, Notification>();
-  stable let messages = Map.empty<Text, Message>();
-  stable let anomalyEvents = Map.empty<Text, AnomalyEvent>();
-  stable let organizations = Map.empty<Text, Organization>();
-  stable let orgAccessRequests = Map.empty<Text, OrgAccessRequest>();
-  stable let documentVersions = Map.empty<Text, DocumentVersion>();
-  stable let documentAccessEntries = Map.empty<Text, DocumentAccessEntry>();
-  stable let messageGroups = Map.empty<Text, MessageGroup>();
-  stable let groupMessages = Map.empty<Text, GroupMessage>();
-  stable let broadcastMessages = Map.empty<Text, BroadcastMessage>();
-  stable let calendarEvents = Map.empty<Text, CalendarEvent>();
-  stable let tasks = Map.empty<Text, Task>();
-  stable let keywordWatchList = Map.empty<Text, KeywordWatchEntry>();
-  stable let governanceLog = Map.empty<Text, GovernanceRecord>();
-  stable let presenceMap = Map.empty<Principal, UserPresence>();
-  stable let activeSessions = Map.empty<Principal, Text>();
-  stable let roleApprovalRequests = Map.empty<Text, RoleApprovalRequest>();
+  private func convertIterToArray<T>(iter : Iter.Iter<T>) : [T] {
+    List.fromIter(iter).toArray();
+  };
 
-  stable var commanderAuthCode = "";
-  stable var commanderAuthCodeUsed = false;
-
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
-  include MixinStorage();
+  public func run(old : OldActor) : NewActor {
+    {
+      userProfiles = old.userProfiles;
+      profiles = old.profiles;
+      sections = old.sections;
+      folders = old.folders;
+      folderPermissions = old.folderPermissions;
+      documents = old.documents;
+      notifications = old.notifications;
+      messages = old.messages;
+      anomalyEvents = old.anomalyEvents;
+      organizations = Map.empty<Text, Organization>();
+      orgAccessRequests = Map.empty<Text, OrgAccessRequest>();
+      documentVersions = Map.empty<Text, DocumentVersion>();
+      documentAccessEntries = Map.empty<Text, DocumentAccessEntry>();
+      messageGroups = Map.empty<Text, MessageGroup>();
+      groupMessages = Map.empty<Text, GroupMessage>();
+      broadcastMessages = Map.empty<Text, BroadcastMessage>();
+      calendarEvents = Map.empty<Text, CalendarEvent>();
+      tasks = Map.empty<Text, Task>();
+      keywordWatchList = Map.empty<Text, KeywordWatchEntry>();
+      governanceLog = Map.empty<Text, GovernanceRecord>();
+      presenceMap = Map.empty<Principal, UserPresence>();
+      activeSessions = Map.empty<Principal, Text>();
+      commanderAuthCode = "";
+      commanderAuthCodeUsed = false;
+      roleApprovalRequests = Map.empty<Text, RoleApprovalRequest>();
+    };
+  };
 };

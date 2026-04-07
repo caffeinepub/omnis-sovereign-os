@@ -1,3 +1,4 @@
+import type { ExtendedProfile } from "@/backend.d";
 import { FormError } from "@/components/shared/FormError";
 import { Button } from "@/components/ui/button";
 import { useExtActor } from "@/hooks/useExtActor";
@@ -26,12 +27,30 @@ export default function ValidateCommanderPage() {
 
     try {
       const principal = identity.getPrincipal();
-      const existing = await actor.getMyProfile();
 
-      // Use registerProfile (bootstrap path) -- the backend allows the first
-      // user to set isS2Admin=true when no admins exist, bypassing the
-      // admin-only guard that blocks updateMyProfile.
-      const profileToRegister: import("@/backend.d").ExtendedProfile = {
+      // Step 1: Bootstrap first admin -- grants caller #admin role if no admins exist yet.
+      try {
+        await actor.bootstrapFirstAdmin();
+      } catch (bootstrapErr) {
+        const msg = bootstrapErr instanceof Error ? bootstrapErr.message : "";
+        if (
+          !msg.includes("Bootstrap already completed") &&
+          !msg.includes("already")
+        ) {
+          throw bootstrapErr;
+        }
+      }
+
+      // Step 2: Get existing profile if any
+      let existing: ExtendedProfile | null = null;
+      try {
+        existing = await actor.getMyProfile();
+      } catch {
+        // profile may not exist yet
+      }
+
+      // Step 3: Build profile with S2 Admin flags
+      const profileToRegister: ExtendedProfile = {
         principalId: principal,
         name: existing?.name ?? "",
         lastName: existing?.lastName ?? "",
@@ -56,12 +75,24 @@ export default function ValidateCommanderPage() {
         isS2Admin: true,
         isValidatedByCommander: true,
         clearanceLevel: BigInt(4),
-        registrationStatus: "Active",
+        registrationStatus: "approved",
         registered: true,
       };
 
-      await actor.registerProfile(profileToRegister);
+      if (existing) {
+        await actor.updateMyProfile(profileToRegister);
+      } else {
+        await actor.registerProfile(profileToRegister);
+      }
 
+      // Step 4: Validate S2 admin (now possible since caller is admin after bootstrap)
+      try {
+        await actor.validateS2Admin(principal);
+      } catch {
+        // non-blocking -- profile flags already set above
+      }
+
+      // Step 5: Log governance event
       try {
         await actor.logGovernanceEvent({
           recordId: crypto.randomUUID(),
@@ -153,12 +184,17 @@ export default function ValidateCommanderPage() {
                 type="button"
                 onClick={() => void handleActivate()}
                 className="h-11 w-full bg-primary font-mono text-sm font-semibold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isFetching}
               >
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Activating...
+                  </span>
+                ) : isFetching ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Connecting...
                   </span>
                 ) : (
                   "Activate as S2 Admin"

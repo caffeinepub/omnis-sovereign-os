@@ -252,8 +252,13 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
-    // Existing 44 functions
+    // Bootstrap -- grants caller #admin if no admins assigned yet
+    bootstrapFirstAdmin(): Promise<void>;
+    // Auth
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    getCallerUserRole(): Promise<UserRole>;
+    isCallerAdmin(): Promise<boolean>;
+    // Profile
     batchSetFolderPermissions(permissions: Array<FolderPermission>): Promise<void>;
     createAnomalyEvent(event: AnomalyEvent): Promise<string>;
     createDocument(document: Document): Promise<string>;
@@ -268,7 +273,6 @@ export interface backendInterface {
     getAllProfiles(): Promise<Array<ExtendedProfile>>;
     getAnomalyEvents(): Promise<Array<AnomalyEvent>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
-    getCallerUserRole(): Promise<UserRole>;
     getDocument(documentId: string): Promise<Document | null>;
     getDocumentsByFolder(folderId: string): Promise<Array<Document>>;
     getFolder(folderId: string): Promise<Folder | null>;
@@ -287,7 +291,6 @@ export interface backendInterface {
     getSentMessages(): Promise<Array<Message>>;
     getUnreadNotificationCount(): Promise<bigint>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
-    isCallerAdmin(): Promise<boolean>;
     markAllNotificationsRead(): Promise<void>;
     markMessageRead(messageId: string): Promise<void>;
     markNotificationRead(notificationId: string): Promise<void>;
@@ -347,7 +350,7 @@ export interface backendInterface {
     createBroadcastMessage(message: BroadcastMessage): Promise<string>;
     getBroadcastMessages(): Promise<Array<BroadcastMessage>>;
     markBroadcastRead(messageId: string): Promise<void>;
-    // Presence (optional — may not be implemented on all backend versions)
+    // Presence
     setPresence?(status: string): Promise<void>;
     getPresence?(userId: Principal): Promise<UserPresence | null>;
     getOrgPresence?(): Promise<Array<UserPresence>>;
